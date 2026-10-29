@@ -32,7 +32,16 @@ def main():
     if not pem:
         raise SystemExit(f"{SECRET_NAME} is not set: nothing would be signed, and a release "
                          "nobody can update to is worse than no release")
-    private = serialization.load_pem_private_key(pem.encode("utf-8"), password=None)
+    lines = pem.splitlines()
+    try:
+        private = serialization.load_pem_private_key(pem.encode("utf-8"), password=None)
+    except (ValueError, TypeError) as e:
+        # what is wrong with it, never what is in it
+        begins = lines[0].strip() == "-----BEGIN PRIVATE KEY-----"
+        ends = lines[-1].strip() == "-----END PRIVATE KEY-----"
+        raise SystemExit(f"{SECRET_NAME} is not a readable PEM private key: {len(lines)} lines, "
+                         f"BEGIN line {'present' if begins else 'missing'}, END line "
+                         f"{'present' if ends else 'missing'} ({type(e).__name__})")
     if not isinstance(private, ec.EllipticCurvePrivateKey):
         raise SystemExit("the release key is not an elliptic curve key")
 

@@ -115,8 +115,10 @@ jobs:
           }
           $setup = "dist\OYPlayer-$env:VERSION-setup.exe"
           $url = "https://github.com/${{ github.repository }}/releases/download/v$env:VERSION/OYPlayer-$env:VERSION-setup.exe"
-          .venv\Scripts\python tools\sign_release.py $setup $env:VERSION $url
-          if ($LASTEXITCODE -ne 0) { "::error::the installer was not signed (see the log)"; exit 1 }
+          # the script's last line is its reason: an annotation, readable without opening the log
+          $said = (.venv\Scripts\python tools\sign_release.py $setup $env:VERSION $url 2>&1 | Out-String).Trim()
+          $said
+          if ($LASTEXITCODE -ne 0) { "::error::the installer was not signed: $(($said -split "`n")[-1])"; exit 1 }
           Get-Content dist\latest.json
 
       - name: Publish the release
