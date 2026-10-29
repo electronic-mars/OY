@@ -9,7 +9,7 @@
 ; Installed apps, no shortcuts, no registry.
 
 #ifndef AppVersion
-  #define AppVersion "0.11.0"
+  #define AppVersion "0.11.1"
 #endif
 
 [Setup]
