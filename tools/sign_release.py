@@ -32,6 +32,10 @@ def main():
     if not pem:
         raise SystemExit(f"{SECRET_NAME} is not set: nothing would be signed, and a release "
                          "nobody can update to is worse than no release")
+    if "-----BEGIN" not in pem:
+        # pasted without its armour lines: the base64 body alone is the whole key, and the
+        # check against PUBLIC_KEY below still decides whether it is the right one
+        pem = f"-----BEGIN PRIVATE KEY-----\n{pem}\n-----END PRIVATE KEY-----"
     lines = pem.splitlines()
     try:
         private = serialization.load_pem_private_key(pem.encode("utf-8"), password=None)
