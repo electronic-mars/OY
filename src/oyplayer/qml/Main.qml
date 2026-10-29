@@ -508,6 +508,7 @@ Window {
             anchors { left: parent.left; leftMargin: 6; verticalCenter: parent.verticalCenter }
             spacing: 2
             IconButton { objectName: "keyAbout"; glyph: Theme.icInfo; tip: L.t.about; latched: aboutPanel.visible
+                         dot: updater.state === "available"
                          onClicked: aboutPanel.visible ? aboutPanel.close() : aboutPanel.open() }
             IconButton { id: clockKey; objectName: "keyScheduler"; glyph: Theme.icClock; latched: scheduler.when !== ""
                          tip: scheduler.when !== "" ? scheduler.summary : L.t.t_scheduler

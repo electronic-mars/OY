@@ -9,7 +9,7 @@
 ; Installed apps, no shortcuts, no registry.
 
 #ifndef AppVersion
-  #define AppVersion "0.10.0"
+  #define AppVersion "0.11.0"
 #endif
 
 [Setup]
@@ -32,8 +32,12 @@ UninstallDisplayName=OY Player
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
-; a running player is closed for the update (a polite request is not enough for a tray app)
+; a running player is closed for the update (a polite request is not enough for a tray app).
+; No AppMutex: a silent setup answers its "close the program" question with Cancel and installs
+; nothing, before the player that started it has finished quitting.
 CloseApplications=force
+; the player is started again by the [Run] line below, and only on the update path
+RestartApplications=no
 ; Qt 6.12 runs on Windows 10 1809 and newer: on older Windows setup says so instead of
 ; installing a program that will not start
 MinVersion=10.0.17763
@@ -65,6 +69,11 @@ Name: "{autodesktop}\OY Player"; Filename: "{app}\OYPlayer.exe"; Tasks: desktopi
 
 [Run]
 Filename: "{app}\OYPlayer.exe"; Description: "{cm:LaunchProgram,OY Player}"; Flags: nowait postinstall skipifsilent
+; The player updating itself runs this setup silently and quits so its files can be replaced;
+; silent skips the line above, and without this one the update would end with the player gone.
+; /RELAUNCH=1 is passed only by the player (update.py), so an administrator's silent install
+; still starts nothing.
+Filename: "{app}\OYPlayer.exe"; Flags: nowait; Check: StartedByThePlayer
 
 [UninstallRun]
 ; the file types, if the person registered them in the settings
@@ -74,4 +83,9 @@ Filename: "{app}\OYPlayer.exe"; Parameters: "--unregister"; RunOnceId: "Unregist
 function IsPortable: Boolean;
 begin
   Result := ExpandConstant('{param:PORTABLE|0}') = '1';
+end;
+
+function StartedByThePlayer: Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
 end;

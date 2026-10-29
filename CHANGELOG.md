@@ -5,6 +5,13 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-29
+
+### Updates
+- The player updates itself. Once a day it asks this project's GitHub page whether a newer version is out and puts a dot on the About key; About › Update and restart downloads the installer, checks its signature and starts the new version. Settings › Window › Look for updates turns the daily look off.
+- It installs only what the release key signed: Windows checks the signature, and an installer that fails the check is deleted, not run.
+- Releases are built on GitHub from the tagged source, with libmpv and ffmpeg at pinned versions.
+
 ## [0.10.0] - 2026-10-29
 
 First public preview.

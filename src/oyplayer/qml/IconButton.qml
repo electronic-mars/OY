@@ -8,6 +8,7 @@ Rectangle {
     property bool danger: false
     property string tip: ""
     property bool hot: false            // the pointer is over it as Windows' button (snap.py)
+    property bool dot: false            // something new behind it (a newer version, for About)
     readonly property bool lit: area.containsMouse || hot
     signal clicked()
     width: 28; height: 24; radius: 6
@@ -23,6 +24,8 @@ Rectangle {
         size: 14
         color: b.latched ? Theme.accText : b.lit ? (b.danger ? "#FF6B6B" : Theme.tx) : Theme.tx3
     }
+    Rectangle { objectName: "dot"; visible: b.dot; width: 6; height: 6; radius: 3; color: Theme.acc
+                x: parent.width - 8; y: 3 }
     MouseArea { id: area; anchors.fill: parent; hoverEnabled: true; onClicked: b.clicked() }
     Tip { text: b.tip; shown: area.containsMouse && !area.pressed && b.tip !== ""; under: true }
 }

@@ -193,6 +193,8 @@ def main(argv):
     preview = Preview()
     info = AppInfo(settings, selftest=selftest)
     server = instance.Server()
+    from .updater import Updater
+    updater = Updater(busy=lambda: editor.exporting)   # quitting would cut a save short
 
     def on_setting(key):
         apply(settings, key, core, actions)
@@ -215,6 +217,7 @@ def main(argv):
         if key in (None, "radioDir", "radioRecDir"):
             radio.folder, radio.rec_folder = settings["radioDir"], settings["radioRecDir"]
             radio.changed.emit()
+        updater.setAuto(settings["updateCheck"] and not selftest)
     on_setting(None)
     settings.changed.connect(on_setting)
     autoskip.toggled.connect(lambda on: settings.set("autoskip", on))
@@ -237,6 +240,7 @@ def main(argv):
     ctx.setContextProperty("radio", radio)
     ctx.setContextProperty("scheduler", scheduler)
     ctx.setContextProperty("i18n", lang)
+    ctx.setContextProperty("updater", updater)
     engine.addImageProvider("preview", preview.provider)
     from PySide6.QtGui import QFontDatabase
     for font in (PKG / "fonts").glob("*.ttf"):      # IBM Plex Mono: the scale, numbers and lengths
@@ -274,6 +278,8 @@ def main(argv):
             playlist.add(more, True)
         tray.showWindow()
     server.filesReceived.connect(handed_over)
+    if not selftest:
+        updater.readyToInstall.connect(app.quit)     # the installer starts on the way out
     log.info("started, log %s", log_path)
 
     test = None
@@ -285,7 +291,7 @@ def main(argv):
         from .selftest import SelfTest
         test = SelfTest(app, win, player, playlist, actions, argv[2:], settings, editor, preview,
                         m8=dict(autoskip=autoskip, radio=radio, scheduler=scheduler, tray=tray,
-                                keys=keys, info=info, history=player.history))
+                                keys=keys, info=info, history=player.history, updater=updater))
         underlay.ready.connect(test.start)
     elif files:
         underlay.ready.connect(lambda: playlist.add(files, True))
@@ -304,6 +310,11 @@ def main(argv):
     # before mpv itself is terminated.
     del engine
     core.terminate()
+    if updater.installer:
+        # everything is written and closed: the installer may replace the player's files
+        # and start it again
+        from . import update
+        update.install(updater.installer)
     result = test.result if test else code
     log.info("exit %s", result)
     logging.shutdown()

@@ -10,3 +10,5 @@ vendor/mpv/*.dll
 # Built by tools/build.cmd
 build/
 dist/
+# The release signing key: it belongs in the repository's secrets only (tools/make_update_key.py)
+.update-signing-key.pem

@@ -30,6 +30,7 @@ DEFAULTS = {
     "singleInstance": True,
     "tray": "off",               # off | on | minimize
     "globalMedia": False,        # media keys reach the player from any program
+    "updateCheck": True,         # once a day ask the release page whether a newer version is out
     # Radio
     "radioDir": "",              # "" = <home>\\Radio, the .lau stations
     "radioRecDir": "",           # "" = Music\\OY Player

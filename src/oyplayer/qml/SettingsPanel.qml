@@ -163,6 +163,9 @@ Popup {
                         SettingRow { title: L.t.s_single
                                      hint: L.t.s_single_h
                                      Toggle { checked: sp.v.singleInstance; onToggled: (on) => settings.set("singleInstance", on) } }
+                        SettingRow { title: L.t.s_update
+                                     hint: L.t.s_update_h
+                                     Toggle { objectName: "setUpdate"; checked: sp.v.updateCheck; onToggled: (on) => settings.set("updateCheck", on) } }
                         SettingRow { title: L.t.s_tray; below: true
                                      hint: L.t.s_tray_h
                                      Segmented { objectName: "setTray"; width: 400; value: sp.v.tray

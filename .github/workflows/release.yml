@@ -1,0 +1,132 @@
+name: release
+
+# A tag like v0.11.0 builds the player and its installer on a clean machine, signs the
+# installer for the player's updater (src/oyplayer/update.py) and publishes the release with
+# latest.json beside it. A push to a branch, or a manual run, builds and checks the same way
+# and publishes nothing: a workflow that has never run is a workflow that does not work.
+on:
+  push:
+    branches: ['**']
+    # numbers only: the exe's version resource and the installer accept nothing else
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # The same bytes the player is built from on the developer's machine, pinned. When a pin
+  # stops resolving (shinchiro prunes old builds), move to a newer build and its hashes.
+  LIBMPV_URL: https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20261007/mpv-dev-x86_64-20261007-git-eb0ee10315.7z
+  LIBMPV_7Z_SHA256: 3fd93055d437310ad094d3f80c9b04f9a56e8b138bcb7d9c5cf01870abbfe5a5
+  LIBMPV_DLL_SHA256: 872827614ed0adfca11e68def5273bcfcaea6acf38bbf1950c35980b59f43a5f
+  FFMPEG_VERSION: 8.1.1
+  FFMPEG_SHA256: 228d7a8556258de907fdb55f36850078ebc7680b84ec30d84ea02e99bec1d1eb
+  FFPROBE_SHA256: 0fde260f5abd35c9cafd96f594cc76365a780c1b73a90e35b6a3409ea1db1bf0
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: The tag and the package agree on the version
+        shell: pwsh
+        run: |
+          $found = Select-String -Path src/oyplayer/__init__.py -Pattern '__version__ = "([^"]+)"'
+          if (-not $found) { "::error::no __version__ in src/oyplayer/__init__.py"; exit 1 }
+          $version = $found.Matches[0].Groups[1].Value
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $tag = "${{ github.ref_name }}" -replace '^v', ''
+            if ($tag -ne $version) { "::error::the tag says $tag and src/oyplayer/__init__.py says $version"; exit 1 }
+          }
+          "version $version"
+          "VERSION=$version" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Python packages
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          .venv\Scripts\python -m pip install --quiet -r requirements.txt -r requirements-build.txt
+          if ($LASTEXITCODE -ne 0) { "::error::pip install failed"; exit 1 }
+
+      - name: libmpv, the pinned shinchiro build
+        shell: pwsh
+        run: |
+          Invoke-WebRequest $env:LIBMPV_URL -OutFile mpv-dev.7z
+          if ((Get-FileHash mpv-dev.7z -Algorithm SHA256).Hash -ne $env:LIBMPV_7Z_SHA256) {
+            "::error::the libmpv archive is not the pinned one"; exit 1 }
+          7z e -y -ovendor\mpv mpv-dev.7z libmpv-2.dll | Out-Null
+          if ((Get-FileHash vendor\mpv\libmpv-2.dll -Algorithm SHA256).Hash -ne $env:LIBMPV_DLL_SHA256) {
+            "::error::libmpv-2.dll is not the pinned one"; exit 1 }
+
+      - name: ffmpeg and ffprobe, the pinned gyan.dev essentials build
+        shell: pwsh
+        run: |
+          choco install ffmpeg --version $env:FFMPEG_VERSION --force -y --no-progress | Select-Object -Last 3
+          $bin = "C:\ProgramData\chocolatey\lib\ffmpeg\tools\ffmpeg\bin"
+          foreach ($pair in @(@("ffmpeg.exe", $env:FFMPEG_SHA256), @("ffprobe.exe", $env:FFPROBE_SHA256))) {
+            if ((Get-FileHash "$bin\$($pair[0])" -Algorithm SHA256).Hash -ne $pair[1]) {
+              "::error::$($pair[0]) is not the pinned one"; exit 1 }
+          }
+
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Select-Object -Last 3 }
+          if (-not (Test-Path $iscc)) { "::error::no Inno Setup at $iscc"; exit 1 }
+          & $iscc 2>&1 | Select-Object -First 1
+
+      - name: Build the player and the installer
+        shell: cmd
+        run: |
+          call tools\build.cmd || (type build\pyinstaller.log & type build\iscc.log & echo ::error::tools\build.cmd failed & exit /b 1)
+
+      - name: Start the built player once
+        shell: pwsh
+        run: |
+          # A build server has no graphics card: Qt draws with the software OpenGL it carries.
+          $env:QT_OPENGL = "software"
+          $env:OY_HOME = "$PWD\smoke-home"
+          $p = Start-Process dist\OYPlayer\OYPlayer.exe -PassThru
+          Start-Sleep -Seconds 25
+          $alive = -not $p.HasExited
+          if ($alive) { Stop-Process -Id $p.Id -Force }
+          $log = "$env:OY_HOME\oyplayer.log"
+          if (Test-Path $log) { Get-Content $log -Tail 40 } else { "no log at $log" }
+          if (-not $alive) { "::error::the built player exited by itself with $($p.ExitCode)"; exit 1 }
+          if (-not (Test-Path $log) -or (Get-Content $log -Raw) -notmatch "started, log") {
+            "::error::the built player never got as far as 'started'"; exit 1 }
+
+      - name: Sign the installer for the updater
+        shell: pwsh
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          # The player installs nothing this key did not sign: a release without it is a
+          # release nobody can update to. A branch run without the key only says so.
+          if (-not $env:UPDATE_SIGNING_KEY) {
+            if ("${{ github.ref_type }}" -eq "tag") { "::error::the secret UPDATE_SIGNING_KEY is not set"; exit 1 }
+            "::warning::UPDATE_SIGNING_KEY is not set: this branch run is not signed"; exit 0
+          }
+          $setup = "dist\OYPlayer-$env:VERSION-setup.exe"
+          $url = "https://github.com/${{ github.repository }}/releases/download/v$env:VERSION/OYPlayer-$env:VERSION-setup.exe"
+          .venv\Scripts\python tools\sign_release.py $setup $env:VERSION $url
+          if ($LASTEXITCODE -ne 0) { "::error::the installer was not signed (see the log)"; exit 1 }
+          Get-Content dist\latest.json
+
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $setup = "dist\OYPlayer-$env:VERSION-setup.exe"
+          .venv\Scripts\python tools\release_notes.py $env:VERSION $setup notes.md
+          if ($LASTEXITCODE -ne 0) { "::error::no release notes for $env:VERSION in CHANGELOG.md"; exit 1 }
+          gh release create "${{ github.ref_name }}" $setup dist\latest.json --title "OY Player $env:VERSION" --notes-file notes.md
+          if ($LASTEXITCODE -ne 0) { "::error::the release was not created"; exit 1 }

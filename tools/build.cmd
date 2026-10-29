@@ -2,7 +2,7 @@
 rem Build OY Player for people: dist\OYPlayer\ (the program, PyInstaller onedir) and
 rem dist\OYPlayer-<version>-setup.exe (Inno Setup, per-user install, no administrator).
 rem     tools\build.cmd
-rem Needs: PyInstaller in .venv (requirements-build.txt), Inno Setup 6 installed per user.
+rem Needs: PyInstaller in .venv (requirements-build.txt), Inno Setup 6.
 rem Logs: build\pyinstaller.log, build\iscc.log
 setlocal
 chcp 65001 >nul
@@ -26,7 +26,10 @@ copy /y "%ROOT%\THIRD-PARTY-NOTICES.md" "%ROOT%\dist\OYPlayer\THIRD-PARTY-NOTICE
 if not exist "%ROOT%\dist\OYPlayer\licenses" mkdir "%ROOT%\dist\OYPlayer\licenses"
 copy /y "%FFDIR%\..\LICENSE" "%ROOT%\dist\OYPlayer\licenses\FFmpeg-LICENSE.txt" >nul || (echo FFmpeg LICENSE missing & exit /b 1)
 echo program: dist\OYPlayer\OYPlayer.exe
-"%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" /Q /DAppVersion=%VER% "%ROOT%\tools\installer.iss" > "%ROOT%\build\iscc.log" 2>&1
+rem Inno Setup per user here, for all users on the build server
+set "ISCC=%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"
+if not exist "%ISCC%" set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+"%ISCC%" /Q /DAppVersion=%VER% "%ROOT%\tools\installer.iss" > "%ROOT%\build\iscc.log" 2>&1
 if errorlevel 1 (echo Inno Setup failed, see build\iscc.log & exit /b 1)
 echo installer: dist\OYPlayer-%VER%-setup.exe
 exit /b 0

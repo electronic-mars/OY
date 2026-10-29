@@ -83,6 +83,33 @@ def start_icy(mp3):
     return srv
 
 
+# The update checks sign with a throwaway key, never the release key: its public half and
+# its signature of UPD_PAYLOAD (made once with the cryptography package).
+UPD_PUB = bytes.fromhex(
+    "2a5a91a75d04c28892631505c19aa0bdde815c6451eef9e41a55139cad864fb2"
+    "314b021745d19c305071607d107385999fe073ac7692b0c0eaae02634171e7c2")
+UPD_SIG = ("253aa4970519038bc02ca648f9201601ca7d1d924f9f3f1a784e031e10c0ffda"
+           "089b9c7fed2397bb94e6c4510f285793fe60088f259563181a18b0b2bd045e82")
+UPD_PAYLOAD = b"OY Player self-test installer\r\n" * 4000
+
+
+class _FilesHandler(BaseHTTPRequestHandler):
+    """A release page on 127.0.0.1: path -> bytes."""
+
+    def do_GET(self):
+        body = self.server.files.get(self.path)
+        if body is None:
+            self.send_error(404)
+            return
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *a):
+        pass
+
+
 def reg_exists(path):
     try:
         winreg.CloseKey(winreg.OpenKey(winreg.HKEY_CURRENT_USER, path))
@@ -365,6 +392,7 @@ class SelfTest(QObject):
         self.steps[-1:-1] = self.st3_steps()     # stage 3: keyboard areas and the screen reader
         self.steps[-1:-1] = self.st4_steps()     # stage 4: the Braun panel, an honest edit
         self.steps[-1:-1] = self.tails_steps()   # the tails of stages 1-4
+        self.steps[-1:-1] = self.upd_steps()     # the update from the release page
         self._next()
 
     def _next(self):
@@ -3705,3 +3733,132 @@ class SelfTest(QObject):
 
     def s_tl_done(self):
         self.check_on_own_screen("after the maximize test the window is back on its own screen")
+
+    # ---- the update (updater.py, update.py): a release page on 127.0.0.1 stands in for GitHub,
+    # and a throwaway key for the release key
+    def upd_steps(self):
+        up = self.m8["updater"]
+
+        def wait(*states):
+            return self.until(lambda: up.state in states, 15, 100)
+
+        def press():
+            self.click_item(self.find_item("updateKey"))
+        return [
+            (0, self.s_up_core), (0, self.s_up_serve), (0, self.s_about), (600, press), (0, wait("available")),
+            (300, self.s_up_found), (0, press), (0, wait("installing", "failed")), (300, self.s_up_installed),
+            # the key comes back from hidden ("installing"): its row is laid out on the next frame
+            (0, lambda: self.s_up_feed("forged")), (300, press), (0, wait("available")), (300, press),
+            (0, wait("failed")), (300, self.s_up_forged),
+            (0, lambda: self.s_up_feed("same")), (0, press), (0, wait("current", "failed")), (300, self.s_up_current),
+            (0, lambda: self.s_up_feed("down")), (0, press), (0, wait("failed")), (300, self.s_up_offline),
+            (0, self.s_up_done),
+        ]
+
+    def up_text(self):
+        return self.find_item("updateText").property("text")
+
+    def s_up_core(self):
+        from . import __version__, update
+        from .settings import DEFAULTS
+        self.check("versions compare as numbers: 0.11.0 > 0.10.0 > 0.9.9, 1.0 > 0.99.9, not newer than itself",
+                   update.is_newer("0.11.0", "0.10.0") and not update.is_newer("0.9.9", "0.10.0")
+                   and update.is_newer("v1.0", "0.99.9") and not update.is_newer(__version__, __version__))
+        refused = []
+        for url in ("http://github.com/electronic-mars/OY", "https://example.com/latest.json"):
+            try:
+                update._allow(url)
+            except ValueError:
+                refused.append(url)
+        self.check("updates come only over https and only from GitHub", len(refused) == 2
+                   and update._allow(update.FEED) == update.FEED, f"refused={refused}")
+        self.check("the player carries the release key's public half, not the self-test's",
+                   len(update.PUBLIC_KEY) == 64 and update.PUBLIC_KEY != UPD_PUB)
+        self.up_saved = (update.FEED, update._allow, update.PUBLIC_KEY)
+        update.PUBLIC_KEY = UPD_PUB
+        f = self.out / "upd_payload.bin"
+        f.write_bytes(UPD_PAYLOAD)
+        good = update.verify(f, bytes.fromhex(UPD_SIG))
+        f.write_bytes(UPD_PAYLOAD[:500] + b"X" + UPD_PAYLOAD[501:])
+        changed = update.verify(f, bytes.fromhex(UPD_SIG))
+        short = update.verify(f, bytes.fromhex(UPD_SIG)[:63])
+        self.check("Windows accepts the signed file and refuses it with one byte changed or a cut signature",
+                   good and not changed and not short, f"signed={good} changed={changed} cut={short}")
+        self.check("the daily look is on by default and does not run in a self-test",
+                   DEFAULTS["updateCheck"] is True and not self.m8["updater"]._auto.isActive())
+
+    def s_up_serve(self):
+        from . import __version__, update
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), _FilesHandler)
+        base = f"http://127.0.0.1:{srv.server_port}"
+
+        def feed(version, file):
+            return json.dumps({"version": version, "platforms": {"windows-x86_64": {
+                "url": f"{base}/{file}", "signature": UPD_SIG}}}).encode()
+        srv.files = {"/latest.json": feed("99.0.0", "setup.exe"), "/forged.json": feed("99.0.0", "forged.exe"),
+                     "/same.json": feed(__version__, "setup.exe"), "/setup.exe": UPD_PAYLOAD,
+                     "/forged.exe": UPD_PAYLOAD[:500] + b"X" + UPD_PAYLOAD[501:]}
+        srv.daemon_threads = True
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.up_srv, self.up_base = srv, base
+        update.FEED = f"{base}/latest.json"
+        update._allow = lambda url: url          # the stand-in page is plain http on 127.0.0.1
+
+    def s_up_feed(self, name):
+        from . import update
+        up = self.m8["updater"]
+        update.FEED = "http://127.0.0.1:9/latest.json" if name == "down" else f"{self.up_base}/{name}.json"
+        up.installer, up._found = None, None     # back to before any look, as a fresh start
+        up._set(state="idle", detail="", percent=0, offered="")
+
+    def s_up_found(self):
+        key = self.find_item("keyAbout")
+        dot = next((c for c in key.childItems() if c.objectName() == "dot"), None)
+        self.check("a newer version on the release page: About says so and offers to update",
+                   self.up_text() == EN["up_available"].replace("%1", "99.0.0")
+                   and self.find_item("updateKey").property("text") == EN["up_install"],
+                   f"text={self.up_text()!r} key={self.find_item('updateKey').property('text')!r}")
+        self.check("and the About key carries a dot", key.property("dot") is True and dot is not None and dot.isVisible())
+        self.shot("upd_available")
+
+    def s_up_installed(self):
+        from .log import home
+        up = self.m8["updater"]
+        path = home() / "update" / "update-setup.exe"
+        self.check("Update downloads the installer beside the settings, checks its signature and hands it on",
+                   up.state == "installing" and up.installer == path and path.exists()
+                   and path.stat().st_size == len(UPD_PAYLOAD) and up.percent == 100
+                   and not path.with_suffix(".exe.part").exists(),
+                   f"state={up.state} detail={up.detail} installer={up.installer} percent={up.percent}")
+        self.check("and says the player will start again", self.up_text() == EN["up_installing"], repr(self.up_text()))
+
+    def s_up_forged(self):
+        from .log import home
+        up = self.m8["updater"]
+        self.check("an installer the release key did not sign is refused, said in words and deleted",
+                   up.state == "failed" and up.detail == "signature" and self.up_text() == EN["up_f_signature"]
+                   and up.installer is None and not (home() / "update" / "update-setup.exe").exists(),
+                   f"state={up.state} detail={up.detail} text={self.up_text()!r}")
+        self.shot("upd_forged")
+
+    def s_up_current(self):
+        up = self.m8["updater"]
+        self.check("the same version on the release page: About says this is the newest",
+                   up.state == "current" and self.up_text() == EN["up_current"],
+                   f"state={up.state} detail={up.detail} text={self.up_text()!r}")
+
+    def s_up_offline(self):
+        up = self.m8["updater"]
+        self.check("no connection: About says so in words and offers to try again",
+                   up.state == "failed" and up.detail == "network" and self.up_text() == EN["up_f_network"]
+                   and self.find_item("updateKey").property("text") == EN["up_retry"],
+                   f"state={up.state} detail={up.detail} text={self.up_text()!r}")
+
+    def s_up_done(self):
+        from . import update
+        update.FEED, update._allow, update.PUBLIC_KEY = self.up_saved
+        self.up_srv.shutdown()
+        up = self.m8["updater"]
+        up.installer, up._found = None, None
+        up._set(state="idle", detail="", percent=0, offered="")
+        self.key("Esc")
