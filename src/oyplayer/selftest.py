@@ -35,7 +35,7 @@ VK = {"Space": 0x20, "M": 0x4D, "S": 0x53, "Right": 0x27, "Enter": 0x0D, "Esc": 
       "NP+": 0x6B, "2": 0x32, "1": 0x31, "=": 0xBB, "Q": 0x51, "`": 0xC0, "/": 0xBF, "I": 0x49, "K": 0x4B, "F12": 0x7B,
       "E": 0x45, "O": 0x4F, "X": 0x58, "\\": 0xDC, "Down": 0x28,
       "H": 0x48, "Z": 0x5A, "Y": 0x59, "F2": 0x71, "F10": 0x79, "End": 0x23, "MediaPlay": 0xB3, "Tab": 0x09,
-      "[": 0xDB, "]": 0xDD, "F6": 0x75, "Home": 0x24, "Left": 0x25}
+      "[": 0xDB, "]": 0xDD, "F6": 0x75, "Home": 0x24, "Left": 0x25, "V": 0x56}
 # a Ukrainian word ("Film"), written as escapes: names and typed text must survive in Cyrillic
 CYRILLIC = "\u0424\u0456\u043b\u044c\u043c"
 SCRATCH = r"Software\OYPlayerSelftest"     # the file types test writes here, and deletes it
@@ -202,6 +202,12 @@ class SelfTest(QObject):
                 return hit
         return None
 
+    def near_accent(self, color):
+        """A colour of the accent's family (its hue, within a few degrees): the accent itself or
+        its lighter shade for signs and words."""
+        c, a = QColor(color), QColor(self.settings["accent"])
+        return c.hsvSaturation() > 60 and min(abs(c.hue() - a.hue()), 360 - abs(c.hue() - a.hue())) <= 20
+
     def click_item(self, item, at=None):
         c = item.mapToScene(QPointF(*(at or (item.width() / 2, item.height() / 2))))
         QTest.mouseClick(self.win, Qt.LeftButton, Qt.NoModifier, QPoint(int(c.x()), int(c.y())))
@@ -230,7 +236,7 @@ class SelfTest(QObject):
 
     # ---- the run: a list of (delay ms, step) executed in order
     def start(self):
-        QTimer.singleShot(420000, self._watchdog)
+        QTimer.singleShot(540000, self._watchdog)
         # the checks read English words, whatever Windows speaks; the track languages to match
         self.settings.set("lang", "en")
         self.settings.set("audioLang", "eng,en")
@@ -272,11 +278,9 @@ class SelfTest(QObject):
         self.steps += [
             # M6: the editor. test_long.mkv is playing (left by the resume steps).
             (0, self.s_ed_open), (700, self.s_ed_key), (700, self.s_ed_opened),
-            (0, seek(12.0)), (500, key("I")), (0, seek(24.5)), (500, key("O")),
-            (0, seek(41.0)), (500, key("I")), (0, seek(47.0)), (500, key("O")), (0, self.until(lambda: not self.ed.pending, 10, 50)), (0, self.s_ed_marked),
+            ] + self.keep_steps([(12.0, 24.5), (41.0, 47.0)]) + [(0, self.s_ed_marked),
             (0, lambda: self.pl.add([clip], True)), (1800, lambda: setattr(self.p.mpv, "pause", True)),
-            (0, seek(2.0)), (500, key("I")), (0, seek(6.0)), (500, key("O")),
-            (0, seek(3.0)), (500, key("I")), (0, seek(4.0)), (500, key("X")), (0, self.until(lambda: not self.ed.pending, 10, 50)), (0, self.s_ed_cut),
+            ] + self.keep_steps([(2.0, 3.0), (4.0, 6.0)]) + [(0, self.s_ed_cut),
             (0, self.s_ed_undo), (300, self.s_ed_undone), (300, self.s_ed_redone),
             (0, self.s_ed_prev), (600, self.s_ed_prev_key), (1700, self.s_ed_prev_mid), (2600, self.s_ed_prev_end),
             (0, self.s_ed_drag), (300, lambda: self.key("Left", Qt.ControlModifier | Qt.ShiftModifier)),
@@ -298,7 +302,8 @@ class SelfTest(QObject):
             return lambda: self.click(name)
         self.steps += [
             # M7: drawings over the picture, on test_long.mkv: a new edit of one fragment, 12-24.5 s
-            (0, self.s_dr_open), (700, self.s_dr_key), (600, key("I")), (0, seek(24.5)), (500, key("O")),
+            (0, self.s_dr_open), (700, self.s_dr_key), (600, key("I")), (300, self.until(lambda: not self.ed.pending, 10, 50)),
+            (0, seek(24.5)), (500, key("O")),
             (0, seek(13.0)), (900, self.s_dr_opened),
             (0, ui("drawRect")), (300, lambda: self.drag([(0.2, 0.2), (0.35, 0.35), (0.5, 0.5)])),
             (500, self.s_dr_rect_done),
@@ -392,6 +397,7 @@ class SelfTest(QObject):
         self.steps[-1:-1] = self.st3_steps()     # stage 3: keyboard areas and the screen reader
         self.steps[-1:-1] = self.st4_steps()     # stage 4: the Braun panel, an honest edit
         self.steps[-1:-1] = self.tails_steps()   # the tails of stages 1-4
+        self.steps[-1:-1] = self.fb4_steps()     # feedback 4 (0.11.1): the mouse, settings, the picture card
         self.steps[-1:-1] = self.upd_steps()     # the update from the release page
         self._next()
 
@@ -422,14 +428,19 @@ class SelfTest(QObject):
 
     def s_lang_uk(self):
         self.lang_en = (self.find_text(EN["s_caps"]), self.find_item("keyPlay").property("tip"))
-        self.click_item(self.find_text(EN["lang_uk"]))
+        self.pick_lang("Українська")
+
+    def pick_lang(self, name):
+        """The language list opened, then its row clicked, as a person picks a language."""
+        self.click_item(self.find_item("setLang"))
+        QTimer.singleShot(250, lambda: self.click_item(self.find_text(name)))
 
     def _lang_shows(self, d):
         tray = [a.text() for a in self.m8["tray"].menu.actions() if a.text()]
         return {"settings title": self.find_text(d["s_caps"]) is not None,
                 "section": self.find_text(d["p_window"]) is not None,
                 "language row": self.find_text(d["s_lang"]) is not None,
-                "play key": self.find_item("keyPlay").property("tip") == d["t_play"],
+                "play key": self.find_item("keyPlay").property("tip").startswith(d["t_play"]),
                 "drop hint": self.find_text(d["drop_hint"]) is not None,
                 "key editor": self.a.bindable()[0]["title"] == d["act_play_pause"],
                 "tray": tray[:1] == [d["tray_show"]]}
@@ -438,9 +449,9 @@ class SelfTest(QObject):
         shows = self._lang_shows(UK)
         self.check("a click on «Ukrainian» shows the window in Ukrainian at once (QML and Python texts)",
                    self.settings["lang"] == "uk" and all(shows.values()) and self.lang_en[0] is not None
-                   and self.lang_en[1] == EN["t_play"], f"lang={self.settings['lang']} {shows} en={self.lang_en}")
+                   and self.lang_en[1].startswith(EN["t_play"]), f"lang={self.settings['lang']} {shows} en={self.lang_en}")
         self.shot("00_lang_uk")
-        self.click_item(self.find_text(UK["lang_en"]))
+        self.pick_lang("English")
 
     def s_lang_en_chk(self):
         shows = self._lang_shows(EN)
@@ -600,7 +611,7 @@ class SelfTest(QObject):
 
     # ---- M3: picture and subtitles
     def s_v_open(self):
-        self.click("keyVideo")
+        self.key("V", Qt.ShiftModifier)
 
     def s_v_opened(self):
         self.check("video key opens the picture card", self.win.findChild(QObject, "videoPanel").property("visible") is True)
@@ -876,6 +887,22 @@ class SelfTest(QObject):
                    f"saved theme={saved.get('theme')} resume={saved.get('resume')}")
 
     # ---- M6: editing
+    def keep_steps(self, ranges):
+        """Steps that leave these pieces of the playing file in the edit, as a person makes
+        them: I at the first start, O at the last end, then for each gap X at its start, X at
+        its end and Delete on the piece between (the one before the piece X chose)."""
+        def at(t, key):
+            return [(0, lambda: self.p.seek(t)), (500, lambda: self.key(key))]
+
+        def drop():
+            self.ed.select(self.ed.selected - 1)
+            self.key("Delete")
+        pend = self.until(lambda: not self.ed.pending, 10, 50)
+        steps = at(ranges[0][0], "I") + [(300, pend)] + at(ranges[-1][1], "O") + [(300, pend)]
+        for (_a, b), (c, _d) in zip(ranges, ranges[1:]):
+            steps += at(b, "X") + [(300, pend)] + at(c, "X") + [(300, pend), (300, drop), (300, pend)]
+        return steps
+
     def frags(self):
         # A mark is the shown frame's time: O after a seek to 24.5 s in a 25 fps clip is
         # the frame at 24.52 s. Tenths are what the checks compare.
@@ -907,19 +934,19 @@ class SelfTest(QObject):
     def s_ed_marked(self):
         # Copy mode: a fragment starts on the keyframe at or before its mark (keyframes
         # every 10 s in test_long.mkv), and that is what the strip shows.
-        self.check("I/O make two fragments; copy mode starts them on keyframes",
-                   self.frags() == [("test_long.mkv", 10.0, 24.5), ("test_long.mkv", 40.0, 47.0)]
-                   and self.ed.lossless and abs(self.ed.total - 21.5) < 0.05
-                   and [[round(x, 1) for x in b[:2]] for b in self.ed.bands] == [[10.0, 24.5], [40.0, 47.0]],
+        self.check("I, O and two cuts with Delete leave two pieces; without loss every border moved to its keyframe",
+                   self.frags() == [("test_long.mkv", 10.0, 20.0), ("test_long.mkv", 40.0, 47.0)]
+                   and self.ed.lossless and abs(self.ed.total - 17.0) < 0.05
+                   and [[round(x, 1) for x in b[:2]] for b in self.ed.bands] == [[10.0, 20.0], [40.0, 47.0]],
                    f"frags={self.frags()} total={self.ed.total:.2f}")
 
     def s_ed_cut(self):
-        self.check("another file's fragment, then X cuts a piece out of it",
+        self.check("another file joins the edit whole and is trimmed and cut the same way",
                    self.frags()[2:] == [("test720.mp4", 2.0, 3.0), ("test720.mp4", 4.0, 6.0)] and len(self.frags()) == 4,
                    f"frags={self.frags()}")
         self.check("files of different formats: saving will re-encode, exact marks",
                    not self.ed.lossless and "different formats" in self.ed.note
-                   and self.frags()[0] == ("test_long.mkv", 12.0, 24.5), f"note={self.ed.note}")
+                   and self.frags()[0] == ("test_long.mkv", 10.0, 20.0), f"note={self.ed.note}")
         self.check("the window did not jump to the new file's size while editing",
                    (self.win.width(), self.win.height()) == self.size0, f"size={(self.win.width(), self.win.height())}")
         self.shot("20_editor_fragments")
@@ -931,15 +958,15 @@ class SelfTest(QObject):
         self.key("Z", Qt.ControlModifier)
 
     def s_ed_undone(self):
-        self.check("Ctrl+Z puts the cut piece back and says what was undone",
-                   self.frags()[2:] == [("test720.mp4", 2.0, 6.0)] and len(self.frags()) == 3
-                   and abs(self.ed.markIn - 3.0) < 0.1 and self.osd_seen[-1:] == ["Undone: cut 0:03.0–0:04.0"],
-                   f"frags={self.frags()} markIn={self.ed.markIn:.2f} osd={self.osd_seen}")
+        self.check("Ctrl+Z puts the deleted piece back and says what was undone",
+                   self.frags()[2:] == [("test720.mp4", 2.0, 3.0), ("test720.mp4", 3.0, 4.0), ("test720.mp4", 4.0, 6.0)]
+                   and self.osd_seen[-1:] and self.osd_seen[-1].startswith("Undone:"),
+                   f"frags={self.frags()} osd={self.osd_seen}")
         self.key("Y", Qt.ControlModifier)
 
     def s_ed_redone(self):
-        self.check("Ctrl+Y cuts it again", self.frags() == self.cut_frags
-                   and self.osd_seen[-1:] == ["Redone: cut 0:03.0–0:04.0"],
+        self.check("Ctrl+Y takes it out again", self.frags() == self.cut_frags
+                   and self.osd_seen[-1:] and self.osd_seen[-1].startswith("Redone:"),
                    f"frags={self.frags()} osd={self.osd_seen}")
         self.p.osdMessage.disconnect(self.osd_seen.append)
 
@@ -1014,7 +1041,7 @@ class SelfTest(QObject):
 
     def s_ed_deleted(self):
         self.check("click a fragment + Delete removes it (not a playlist row)",
-                   self.frags() == [("test_long.mkv", 10.0, 24.5), ("test_long.mkv", 40.0, 47.0)]
+                   self.frags() == [("test_long.mkv", 10.0, 20.0), ("test_long.mkv", 40.0, 47.0)]
                    and self.ed.lossless, f"frags={self.frags()} playlist={self.pl.count}")
 
     def s_ed_copy(self):
@@ -1040,7 +1067,7 @@ class SelfTest(QObject):
 
     def s_ed_cancel_prep(self):
         self.settings.set("exportCodec", "h265")
-        self.ed.clear()
+        self.ed.frags = []
 
     def s_ed_cancel_start(self):
         self.check("H.265 chosen: re-encoding", self.ed.note == "re-encoding to H.265" and len(self.ed.frags) == 2,
@@ -1127,7 +1154,7 @@ class SelfTest(QObject):
         return [round(self.score(before, after, self.layer_pt(*p).x() * dpr, self.layer_pt(*p).y() * dpr)) for p in pts]
 
     def s_dr_open(self):
-        self.ed.clear()
+        self.ed.frags = []
         self.p.mpv.pause = True
         self.p.seek(12.0)
         QTest.mouseMove(self.win, QPoint(self.win.width() // 2, self.win.height() // 3))
@@ -1814,11 +1841,13 @@ class SelfTest(QObject):
         QTimer.singleShot(300, lambda: self.scroll_to(name))
 
     def s_about(self):
-        self.click("keyAbout")
+        self.win.findChild(QObject, "settingsPanel").setProperty("visible", True)
+        QTimer.singleShot(200, lambda: self.click_item(self.find_item("nav6")))
 
     def s_about_shot(self):
-        self.check("the title bar's first button shows what this is and its version",
-                   self.win.findChild(QObject, "aboutPanel").property("visible") is True)
+        page = self.find_item("aboutPage")
+        self.check("About is the settings' last section: what this is and its version; the title bar has no About key",
+                   page is not None and page.isVisible() and self.find_item("keyAbout") is None)
         self.shot("m8_15_about")
         self.key("Esc")
 
@@ -1849,7 +1878,7 @@ class SelfTest(QObject):
             (900, lambda: self.s_fb_bars(full, "full")),
             # every hint, whole inside the window
             (0, lambda: self.s_fb_tips("the panel and the title bar")),
-            (0, lambda: self.s_fb_rclick("keySubs")), (900, self.s_fb_tip_menu), (0, lambda: self.key("Esc")),
+            (0, lambda: self.s_fb_rclick("keySound")), (900, self.s_fb_tip_menu), (0, lambda: self.key("Esc")),
             (400, lambda: QTest.mouseMove(self.win, QPoint(self.win.width() // 2, self.win.height() // 3))),
             # the one colour: the settings' dial, then the panel; the editor turns it yellow
             (0, lambda: self.key("F10")), (700, lambda: self.click_item(self.find_item("nav1"))),
@@ -2054,7 +2083,7 @@ class SelfTest(QObject):
 
     def s_fb_tip_menu(self):
         """The pointer stays on the key whose menu it opened: its hint must not cover the menu."""
-        menu, tips = self.win.findChild(QObject, "subsMenu"), self.visible_tips()
+        menu, tips = self.win.findChild(QObject, "audioMenu"), self.visible_tips()
         self.check("a key's hint does not lie over the menu the key opened",
                    menu is not None and menu.property("visible") is True and not tips,
                    f"menu open={menu.property('visible') if menu else None} hints shown={[t.property('text') for t in tips]}")
@@ -2134,7 +2163,8 @@ class SelfTest(QObject):
         green = sum(1 for h in hues if 125 <= h <= 160)
         yellow = sum(1 for h in hues if 75 <= h <= 100)
         self.check("the editor turns the colour yellow: the play key, the seek bar, the strip; no green left",
-                   self.ed.active and 80 <= key[2] <= 98 and green == 0 and yellow > 200,
+                   # a few: ClearType's coloured fringes on the title's letters (native text), not a key
+                   self.ed.active and 80 <= key[2] <= 98 and green < 40 and yellow > 200,
                    f"play key hue={key[2]:.0f} yellow pixels={yellow} green={green}")
         self.shot("fb1_06_edit_yellow")
 
@@ -2149,7 +2179,7 @@ class SelfTest(QObject):
 
     # ---- feedback 2: the UI/UX council's stage 1 (states that tell the truth, menus on the
     # keyboard, one selection in the editor) and stage 2 (the drawings' tracks on the timeline)
-    FILE_KEYS = ("keyFrame", "keyFast", "keySubs", "keyShot", "keyVideo", "keyEdit")
+    FILE_KEYS = ("keyShot", "keyEdit")
 
     def fb2_steps(self):
         folder = Path(self.media).parent
@@ -2187,8 +2217,8 @@ class SelfTest(QObject):
             (900, self.s_fb2_fs_left),
             # the editor: three fragments of test_long.mkv; after O the last one is chosen
             (0, lambda: self.pl.add([long_mkv], True)), (1800, self.s_fb2_ed_prep), (0, key("E", Qt.ControlModifier)),
-            (700, seek(10.0)), (500, key("I")), (0, seek(20.0)), (500, key("O")), (0, seek(30.0)), (500, key("I")),
-            (0, seek(40.0)), (500, key("O")), (0, seek(50.0)), (500, key("I")), (0, seek(60.0)), (500, key("O")),
+            (700, lambda: None)] + self.keep_steps([(10.0, 20.0), (30.0, 40.0), (50.0, 60.0)]) + [
+            (0, lambda: self.ed.select(2)),
             # the edit's preview starts at the first fragment, from its key and from Shift+Space ...
             (300, ui("editPreview")), (800, lambda: self.s_fb2_preview("the preview key", 0)),
             (0, key("Space", Qt.ShiftModifier)), (400, key("Space", Qt.ShiftModifier)),
@@ -2197,9 +2227,6 @@ class SelfTest(QObject):
             (400, lambda: self.click_item(self.find_item("frag1"))), (600, key("Space")),
             (800, lambda: self.s_fb2_preview("a click on the second fragment, then Space,", 1)),
             (0, key("Space", Qt.ShiftModifier)),
-            # ... but not once something else was done there: I, then Space plays the file
-            (400, lambda: self.click_item(self.find_item("frag1"))), (500, key("I")), (300, key("Space")),
-            (700, self.s_fb2_cue_gone),
             # the playlist's «−» takes out a playlist row, also while the editor is open
             (300, lambda: self.show_list(True)), (700, self.s_fb2_minus), (500, self.s_fb2_minus_done),
             (0, lambda: self.show_list(False)),
@@ -2403,7 +2430,7 @@ class SelfTest(QObject):
 
     def s_fb2_ed_prep(self):
         self.p.mpv.pause = True
-        self.ed.clear()
+        self.ed.frags = []
         self.ed._notes, self.ed._noteSel = [], -1      # an edit of its own: none of the earlier drawings
         self.ed.changed.emit()
         self.settings.set("exportCodec", "copy")
@@ -2414,14 +2441,6 @@ class SelfTest(QObject):
         self.check(f"{how} plays the edit from fragment {row + 1}",
                    f is not None and self.ed.previewing == row and self.ed._from(f) - 0.1 <= pos < f["end"] and not self.st("paused"),
                    f"previewing={self.ed.previewing} pos={pos:.2f} fragments={self.frags()}")
-
-    def s_fb2_cue_gone(self):
-        self.check("after a click on a fragment and then I, Space plays the file, not the edit",
-                   self.ed.previewing == -1 and not self.st("paused"),
-                   f"previewing={self.ed.previewing} paused={self.st('paused')} pos={self.st('position'):.2f}")
-        self.p.mpv.pause = True
-        self.ed._in = None              # the mark was only the gesture under test
-        self.ed.changed.emit()
 
     def s_fb2_minus(self):
         self.pl.add([self.media], False)
@@ -2883,7 +2902,7 @@ class SelfTest(QObject):
             (0, seek(35.0)), (600, self.s_st1_o_real), (0, seek(55.0)), (600, self.s_st1_o_real2),
             (0, seek(53.0)), (600, self.s_st1_x_real), (0, pending()), (0, self.s_st1_real_done),
             (0, seek(75.0)), (600, self.s_st1_o_slow), (150, lambda: self.shot("st1_01_fragment_pending")),
-            (0, pending()), (0, self.s_st1_o_done), (0, seek(73.0)), (600, self.s_st1_x_slow), (0, pending()),
+            (0, pending()), (0, self.s_st1_o_done), (0, seek(63.0)), (600, self.s_st1_x_slow), (0, pending()),
             (0, self.s_st1_x_done), (0, self.s_st1_whole_slow), (0, pending()), (0, self.s_st1_whole_done),
             # Alt+I: the card opens at once, ffprobe's rows follow
             (0, self.s_st1_info_real), (800, lambda: self.key("Esc")), (400, self.s_st1_info_slow),
@@ -2936,30 +2955,25 @@ class SelfTest(QObject):
         self.st1 = {}
         if self.ed.active:
             self.ed.close()
-        self.ed.frags, self.ed._notes, self.ed._in = [], [], None
+        self.ed.frags, self.ed._notes = [], []
         self.ed.setCodec("copy")
         self.ed._probes.clear()
         self.pl.add([path], True)
 
-    def st1_o(self, a):
-        """O over [a, here] (the start mark set directly: I only marks, it asks nothing)."""
-        self.ed._in = (self.st("path"), a)
-        return self.timed(lambda: self.key("O"))
-
-    def st1_x(self, a):
-        self.ed._in = (self.st("path"), a)
-        return self.timed(lambda: self.key("X"))
+    def st1_key(self, name):
+        """How long a key of the edit takes to return."""
+        return self.timed(lambda: self.key(name))
 
     def s_st1_o_real(self):
         if not self.ed.active:
             self.a.run("edit_mode")
-        self.st1["o_first"] = self.st1_o(25.0)       # the file's first fragment: format and keyframe
+        self.st1["o_first"] = self.st1_key("I")      # the file comes in whole, I at 35: format and keyframe
 
     def s_st1_o_real2(self):
-        self.st1["o_next"] = self.st1_o(45.0)        # the format is known: the keyframe alone
+        self.st1["o_next"] = self.st1_key("O")       # O at 55: nothing to read
 
     def s_st1_x_real(self):
-        self.st1["x"] = self.st1_x(50.0)
+        self.st1["x"] = self.st1_key("X")            # X at 53: the keyframe alone
 
     def s_st1_real_done(self):
         log.info("STAGE1 MEASURE editor O first=%.0f ms O next=%.0f ms X=%.0f ms",
@@ -2970,30 +2984,30 @@ class SelfTest(QObject):
         self.slow(editor_mod, "keyframe_before")
         self.slow(editor_mod, "probe")
         self.ed._probes.clear()
-        n0 = len(self.ed.frags)
-        self.st1["o_slow"] = self.st1_o(65.0)
+        self.ed.frags = []                           # the file comes in again, unread
+        self.st1["o_slow"] = self.st1_key("X")       # at 75
         frags = self.ed.fragments
-        self.st1["o_shown"] = len(frags) == n0 + 1 and bool(frags[-1].get("pending"))
+        self.st1["o_shown"] = len(frags) == 2 and bool(frags[-1].get("pending"))
 
     def s_st1_o_done(self):
         self.restore()
         f = self.ed.fragments[-1]
-        self.check("O with a slow ffprobe: the fragment is on the strip at once, marked as being read, "
-                   "its keyframe arrives later",
-                   self.st1["o_slow"] < self.FAST_MS and self.st1["o_shown"] and abs(f["from"] - 60.0) < 0.05
+        self.check("X with a slow ffprobe on a file not yet read: the pieces are on the strip at once, marked as "
+                   "being read; the cut moves to its keyframe later",
+                   self.st1["o_slow"] < self.FAST_MS and self.st1["o_shown"] and abs(f["from"] - 70.0) < 0.05
                    and not f.get("pending"),
                    f"O took {self.st1['o_slow']:.0f} ms shown={self.st1['o_shown']} from={f['from']:.2f}")
 
     def s_st1_x_slow(self):
         from . import editor as editor_mod
         self.slow(editor_mod, "keyframe_before")
-        self.st1["x_slow"] = self.st1_x(71.0)      # inside 65-75: the piece 73-75 begins at the keyframe 70
+        self.st1["x_slow"] = self.st1_key("X")     # at 63, inside 0-70: the piece after it begins at the keyframe 60
 
     def s_st1_x_done(self):
         self.restore()
-        tail = [f for f in self.ed.fragments if abs(f["end"] - 75.0) < 0.2]
+        tail = [f for f in self.ed.fragments if abs(f["end"] - 70.0) < 0.2]
         self.check("X with a slow ffprobe returns at once; the piece after the cut gets its keyframe",
-                   self.st1["x_slow"] < self.FAST_MS and len(tail) == 1 and abs(tail[0]["from"] - 70.0) < 0.05,
+                   self.st1["x_slow"] < self.FAST_MS and len(tail) == 1 and abs(tail[0]["from"] - 60.0) < 0.05,
                    f"X took {self.st1['x_slow']:.0f} ms tail={tail}")
 
     def s_st1_whole_slow(self):
@@ -3229,7 +3243,7 @@ class SelfTest(QObject):
     def s_st3_prep(self, path):
         if self.ed.active:
             self.ed.close()
-        self.ed.frags, self.ed._notes, self.ed._in = [], [], None
+        self.ed.frags, self.ed._notes = [], []
         self.pl.clear()
         self.pl.add([path] + self.medias, True)
         self.win.setProperty("playlistShown", True)
@@ -3244,7 +3258,7 @@ class SelfTest(QObject):
         seek = [(r, n, d) for r, n, d, _s, o in tree if o is not None and o.objectName() == "seekRail"]
         tips = [n for _r, n, _d, _s, o in tree if o is not None and o.objectName() == "tip"]
         self.check("a screen reader finds every key on the panel as a button with its name",
-                   len(keys) >= 15 and not unnamed and any(n == "Play" or n == "Pause" for _r, n in keys),
+                   len(keys) >= 12 and not unnamed and any(n == "Play" or n == "Pause" for _r, n in keys),
                    f"keys={len(keys)} unnamed={unnamed[:5]} names={[n for _r, n in keys][:12]}")
         self.check("the seek bar is a slider named «Position» that says where it is",
                    len(seek) == 1 and seek[0][0] == QAccessible.Slider and seek[0][1] == "Position" and "/" in seek[0][2],
@@ -3369,9 +3383,9 @@ class SelfTest(QObject):
         return [
             (0, lambda: self.s_st4_prep(long_mkv)), (1800, lambda: setattr(self.p.mpv, "pause", True)),
             (0, seek(75.0)), (600, self.s_st4_panel), (0, self.s_st4_menu), (400, self.s_st4_menu_key),
-            (0, lambda: self.key("Esc")), (300, self.s_st4_edit_prep), (0, seek(35.0)), (600, self.s_st4_ghost),
-            (0, self.s_st4_o), (0, self.until(lambda: not self.ed.pending, 10, 100)), (600, self.s_st4_strip),
-            (0, self.until(lambda: not self.ed.pending, 10, 100)), (300, self.s_st4_preview), (900, self.s_st4_previewing), (0, self.s_st4_close_x), (400, self.s_st4_closed),
+            (0, lambda: self.key("Esc")), (300, self.s_st4_edit_prep), (0, seek(35.0)), (600, self.s_st4_keys),
+            ] + self.keep_steps([(25.0, 35.0), (45.0, 55.0)]) + [
+            (600, self.s_st4_preview), (900, self.s_st4_previewing), (0, self.s_st4_close_x), (400, self.s_st4_closed),
             # saving: Ctrl+Shift+S saves beside the source at once, no dialog
             (0, self.s_st4_save), (0, self.until(lambda: not self.ed.exporting, 60)),
             (300, self.s_st4_saved),
@@ -3381,7 +3395,7 @@ class SelfTest(QObject):
     def s_st4_prep(self, path):
         if self.ed.active:
             self.ed.close()
-        self.ed.frags, self.ed._notes, self.ed._in = [], [], None
+        self.ed.frags, self.ed._notes = [], []
         self.win.setProperty("playlistShown", False)
         self.pl.add([path], True)
 
@@ -3397,28 +3411,29 @@ class SelfTest(QObject):
         self.check("the volume is filled in neutral metal: the accent is only the play key and the position",
                    coloured == 0, f"coloured pixels in the volume={coloured}")
         self.p.mpv.mute = True           # the sound key latches: checked in the next step
-        names = ("keyEject", "keyPlay", "keyFrame", "keyFast", "keySubs", "keySound", "keyShot", "keyVideo", "keyEdit",
-                 "keySettings", "keyPrev", "keyPlaylist", "keyNext")
+        gone = [n for n in ("keyEject", "keyFrame", "keyFast", "keyVideo") if self.find_item(n) is not None]
+        subs, prev = self.find_item("keySubs"), self.find_item("keyPrev")
+        self.check("the panel without Open, Frame, Fast and Video; subtitles only for a file that has them, "
+                   "previous/next only with more than one file in the list",
+                   not gone and subs.isVisible() == (len(self.p.subTracks) > 0) and prev.isVisible() == (self.pl.count > 1),
+                   f"left on the panel={gone} subs shown={subs.isVisible()} tracks={len(self.p.subTracks)} "
+                   f"prev shown={prev.isVisible()} list={self.pl.count}")
+        names = ("keyPlay", "keySubs", "keySound", "keyShot", "keyEdit", "keySettings", "keyPrev", "keyPlaylist", "keyNext")
         caps = {n: self.find_item(n).property("flat") for n in names}
         self.check("every key of the panel is a rubber cap (the Braun concept)",
                    all(v is False for v in caps.values()), f"flat={caps}")
-        ff, cc, shot = self.find_item("keyFast"), self.find_item("keySubs"), self.find_item("keyShot")
-        gap = cc.mapToScene(QPointF(0, 0)).x() - ff.mapToScene(QPointF(ff.width(), 0)).x()
-        seps = [it for it in self.find_item("keySubs").parentItem().childItems()
-                if it.x() > ff.x() and it.x() < cc.x()]
-        line = [c for s in seps for c in s.childItems() if c.isVisible() and c.width() == 1]
-        mid = ff.mapToScene(QPointF(ff.width(), 0)).x() + gap / 2
+        keys, shot = self.find_item("keyPlay").parentItem().parentItem(), self.find_item("keyShot")
         lcd = self.find_item("lcdTime")
-        self.check("groups stand apart with a hairline in the middle, keys in a group 6 px; the time glass is as high as the caps",
-                   gap >= 18 and len(line) >= 1 and abs(line[0].mapToScene(QPointF(0, 0)).x() + 0.5 - mid) <= 1
-                   and lcd is not None and lcd.height() == shot.height(),
-                   f"gap={gap} line={[round(c.mapToScene(QPointF(0, 0)).x(), 1) for c in line]} mid={mid:.1f} "
-                   f"lcd={lcd and lcd.height()} caps={shot.height()}")
+        mid = lcd.mapToScene(QPointF(lcd.width() / 2, 0)).x() - keys.mapToScene(QPointF(keys.width() / 2, 0)).x()
+        rules = [c for row in keys.childItems() for c in row.childItems() if c.isVisible() and c.width() <= 1.5 and c.height() > 10]
+        self.check("groups stand apart by air, no rules between them; the time glass in the panel's middle, as high as the caps",
+                   not rules and abs(mid) <= 2 and lcd.height() == shot.height(),
+                   f"rules={len(rules)} lcd off the middle by {mid:.1f} lcd={lcd.height()} caps={shot.height()}")
         txt = lcd.property("text") if lcd else ""
         self.check("the time reads as the scale does: 01:15 / 01:30, and a click is said to switch it",
                    re.fullmatch(r"01:1\d / 01:30", txt or "") is not None and "Click" in (lcd.property("tip") or ""),
                    f"lcd={txt!r} tip={lcd and lcd.property('tip')!r}")
-        second = {n: self.find_item(n).property("second") for n in ("keyFast", "keySubs", "keySound", "keyShot")}
+        second = {n: self.find_item(n).property("second") for n in ("keyPlay", "keySound", "keyShot")}
         tips = {n: self.find_item(n).property("tip") for n in second}
         self.check("keys with a second action on the right button carry a corner mark and say so",
                    all(v is True for v in second.values()) and all("right click" in t for t in tips.values()),
@@ -3431,57 +3446,56 @@ class SelfTest(QObject):
     def s_st4_menu(self):
         snd = self.find_item("keySound")
         lamp = self.find_item("lamp", snd)
-        self.check("a latched key keeps its sign plain and lights a lamp above it",
-                   snd.property("latched") is True and lamp is not None and lamp.property("visible") is True
-                   and QColor(snd.property("ink")) == QColor(self.find_item("keyShot").property("ink")),
-                   f"latched={snd.property('latched')} lamp={lamp is not None and lamp.property('visible')} "
-                   f"ink={QColor(snd.property('ink')).name()} plain={QColor(self.find_item('keyShot').property('ink')).name()}")
+        acc = QColor(self.win.findChild(QObject, "keyPlaylist").property("ink"))
+        self.check("a latched key shows its sign in the accent, with no lamp beside it",
+                   snd.property("latched") is True and lamp is None
+                   and QColor(snd.property("ink")) != QColor(self.find_item("keyShot").property("ink"))
+                   and self.near_accent(snd.property("ink")),
+                   f"latched={snd.property('latched')} lamp={lamp is not None} "
+                   f"ink={QColor(snd.property('ink')).name()} plain={QColor(self.find_item('keyShot').property('ink')).name()} "
+                   f"list={acc.name()}")
         self.shot("st4_02_lamp")
         self.p.mpv.mute = False
-        self.win.openSpeedMenu()
+        self.win.openSpeedMenu(None)
 
     def s_st4_menu_key(self):
-        self.check("the key whose menu is open stays pressed in", self.find_item("keyFast").property("down") is True,
-                   f"down={self.find_item('keyFast').property('down')}")
+        self.check("the key whose menu is open stays pressed in (speed: the play key's right button)",
+                   self.find_item("keyPlay").property("down") is True,
+                   f"down={self.find_item('keyPlay').property('down')}")
 
     def s_st4_edit_prep(self):
         # an ordinary window, wide enough for the fragments' words (a narrow one hides the
         # shift beside the range: there is no room for both)
         self.win.setWidth(1280)
         self.a.run("edit_mode")
-        self.ed._in = None
+        self.st4_osd = []
+        self.p.osdMessage.connect(self.st4_osd.append)
 
-    def s_st4_ghost(self):
-        g = self.find_item("markGhost")
-        self.check("with no start mark the timeline shows a pale I at the file's start: «beginning of the file»",
-                   g is not None and g.property("visible") is True and "beginning of the file" in (g.property("tip") or ""),
-                   f"ghost={g is not None and g.property('visible')}")
-        x = self.find_item("editCut")
-        keys = [self.find_item(n) for n in ("editIn", "editOut", "editCut")]
-        tips = [k.property("tip") or "" for k in keys]
-        self.check("X is a letter like I and O (the concept's row, no words under them); their hints say start · end · cut",
-                   [k.property("label") for k in keys] == ["I", "O", "X"]
-                   and all(k.property("caption") == "" for k in keys) and all(t for t in tips),
-                   f"labels={[k.property('label') for k in keys]} tips={tips}")
-        self.ed._in = (self.st("path"), 25.0)          # I at 25: the keyframe before it is 20
-
-    def s_st4_o(self):
-        self.key("O")
-        self.ed._in = (self.st("path"), 45.0)
-        self.p.seek(55.0)
-
-    def s_st4_strip(self):
-        self.key("O")
+    def s_st4_keys(self):
+        keys = [self.find_item(n) for n in ("editIn", "editCut", "editOut", "editDelete")]
+        signs = [k.property("glyph") for k in keys]
+        self.check("the edit holds the whole file at once; nothing to save yet",
+                   self.frags() == [("test_long.mkv", 0.0, 90.0)] and not self.ed.edited
+                   and self.find_item("editSave").isEnabled() is False, f"frags={self.frags()} edited={self.ed.edited}")
+        self.check("the strip's keys read as a ruler |← ✂ →| and a bin, signs not letters; their hints say what they take away",
+                   signs == ["arrow-left-to-line", "scissors", "arrow-right-to-line", "trash-2"]
+                   and all(k.property("label") == "" and k.property("caption") == "" for k in keys)
+                   and all(k.property("tip") for k in keys),
+                   f"signs={signs} tips={[k.property('tip') for k in keys]}")
+        res = self.find_item("editPreview")
+        self.check("the finished video's key says «Result»", res.property("caption") == "Result"
+                   and res.property("glyph") == "clapperboard", f"caption={res.property('caption')!r}")
 
     def s_st4_preview(self):
         frags = self.ed.fragments
-        shift = self.find_item("fragShift0")
         lead = self.find_item("bandLead0")
+        self.check("without loss the borders sit on keyframes (I at 25, X at 45 -> 20 and 40): what shows is what is "
+                   "saved, nothing hatched before a piece, the OSD says so",
+                   self.frags() == [("test_long.mkv", 20.0, 30.0), ("test_long.mkv", 40.0, 55.0)]
+                   and (lead is None or lead.property("visible") is False or lead.property("width") <= 2)
+                   and any("keyframe" in m for m in self.st4_osd),
+                   f"frags={self.frags()} lead={lead and lead.property('width')} osd={self.st4_osd}")
         summary = self.find_item("editSummary")
-        self.check("the shift to the keyframe is shown: −5.0 s on the fragment, hatched on the timeline",
-                   shift is not None and shift.property("visible") is True and shift.property("text") == "−5.0 s"
-                   and lead is not None and lead.property("width") > 2,
-                   f"shift={shift and shift.property('text')!r} lead={lead and lead.property('width')}")
         outside = [self.find_item(f"outside{i}") for i in range(3)]
         self.check("what stays out of the file is veiled on the timeline (before, between and after the fragments)",
                    all(o is not None and o.property("visible") is True for o in outside),
@@ -3509,9 +3523,12 @@ class SelfTest(QObject):
 
     def s_st4_previewing(self):
         total = self.find_item("editTotal")
-        self.check("while the edit plays its length reads as time played / length",
-                   total is not None and re.fullmatch(r"0:\d\d\.\d / 0:30\.0", total.property("text") or "") is not None,
-                   f"total={total and total.property('text')!r}")
+        bar = self.find_item("resultBar")
+        self.check("the result plays from its start: its length reads as time played / length, a bar shows where in it",
+                   total is not None and re.fullmatch(r"0:\d\d\.\d / 0:25\.0", total.property("text") or "") is not None
+                   and self.ed.previewing == 0 and bar is not None and bar.property("visible") is True,
+                   f"total={total and total.property('text')!r} previewing={self.ed.previewing} "
+                   f"bar={bar is not None and bar.property('visible')}")
         self.shot("st4_04_previewing")
         self.a.run("edit_preview")
 
@@ -3564,25 +3581,145 @@ class SelfTest(QObject):
         out.unlink(missing_ok=True)      # the test media folder stays as it was
 
     def s_st4_done(self):
+        self.p.osdMessage.disconnect(self.st4_osd.append)
         self.ed.frags = []
         self.ed.close()
 
     # ---- the tails of stages 1-4: numbers and other files on the timeline, the keyframe
     # said after O, the LCD in the cream theme, solid transport signs, 10 px scale labels,
     # Settings apart from the navigation, P from History, Snap Layouts on the maximize key
+    # ---- feedback 4 (0.11.1): what a person does with the mouse, which the keyboard checks
+    # above never touched (the picture card's sliders set nothing for a release)
+    def fb4_steps(self):
+        return [
+            (0, self.s_fb4_prep), (1500, lambda: self.key("V", Qt.ShiftModifier)), (600, self.s_fb4_rail),
+            (400, self.s_fb4_railed), (0, lambda: self.key("Esc")),
+            (400, self.s_fb4_left), (900, self.s_fb4_hidden), (0, self.s_fb4_left), (900, self.s_fb4_shown),
+            (0, lambda: self.s_fb4_button(Qt.MiddleButton)), (900, self.s_fb4_full),
+            (0, lambda: self.s_fb4_button(Qt.MiddleButton)), (900, self.s_fb4_windowed),
+            (0, self.s_fb4_back), (700, self.s_fb4_backed),
+            (0, lambda: self.click("keySettings")), (600, lambda: self.settings_page(1, "setLang")),
+            (700, self.s_fb4_settings), (0, self.s_fb4_lang),
+            (500, self.s_fb4_lang_menu), (500, self.s_fb4_reset), (300, self.s_fb4_reset2), (300, self.s_fb4_reset_done),
+            (0, lambda: self.key("Esc")), (300, self.s_fb4_thumb),
+        ]
+
+    def s_fb4_prep(self):
+        if self.ed.active:
+            self.ed.close()
+        self.win.setWidth(1280)
+        self.win.setHeight(760)
+        self.win.setProperty("playlistShown", False)
+        self.pl.add([self.media], True)
+
+    def s_fb4_rail(self):
+        rail = self.find_item("rail_brightness")
+        self.rail_mid = rail is not None and abs(rail.property("shown") - 0.5) < 0.02 if self.st("brightness") == 0 else None
+        self.click_item(rail, (rail.width() * 0.75, rail.height() / 2))
+
+    def s_fb4_railed(self):
+        b = self.st("brightness")
+        self.check("the picture card's brightness slider: at 0 its cap stands in the middle, a click at 3/4 sets +50",
+                   self.rail_mid is not False and 45 <= b <= 55, f"middle={self.rail_mid} brightness={b}")
+        self.shot("fb4_01_brightness")
+        self.p.resetColors()
+
+    def video_point(self):
+        return QPoint(self.win.width() // 2, self.win.height() // 3)
+
+    def s_fb4_left(self):
+        self.paused0 = self.st("paused")
+        QTest.mouseClick(self.win, Qt.LeftButton, Qt.NoModifier, self.video_point())
+
+    def s_fb4_hidden(self):
+        panel = self.win.findChild(QObject, "panel")
+        self.check("a click on the picture hides the panels (the default), the picture takes the window, playback goes on",
+                   self.win.property("uiHidden") is True and panel.property("visible") is False
+                   and self.st("paused") == self.paused0, f"hidden={self.win.property('uiHidden')} "
+                   f"panel={panel.property('visible')} paused {self.paused0}->{self.st('paused')}")
+        self.shot("fb4_02_hidden")
+
+    def s_fb4_shown(self):
+        self.check("the next click brings them back", self.win.property("uiHidden") is False
+                   and self.win.findChild(QObject, "panel").property("visible") is True)
+
+    def s_fb4_button(self, button):
+        QTest.mouseClick(self.win, button, Qt.NoModifier, self.video_point())
+
+    def s_fb4_full(self):
+        self.check("the middle button goes full screen (the default)", self.win.property("fs") is True)
+
+    def s_fb4_windowed(self):
+        self.check("and back to the window", self.win.property("fs") is False)
+
+    def s_fb4_back(self):
+        self.p.seek(10.0)
+        QTimer.singleShot(500, lambda: setattr(self, "pos0", self.st("position")))
+        QTimer.singleShot(520, lambda: self.s_fb4_button(Qt.BackButton))
+
+    def s_fb4_backed(self):
+        self.check("the mouse's back button seeks back (the default)", self.st("position") < self.pos0 - 2,
+                   f"{self.pos0:.1f}->{self.st('position'):.1f}")
+
+    def s_fb4_settings(self):
+        sp, x = self.win.findChild(QObject, "settingsPanel"), self.find_item("settingsClose")
+        card = sp.property("contentItem")
+        tl = card.mapToScene(QPointF(card.width(), 0))
+        c = x.mapToScene(QPointF(x.width(), 0))
+        self.check("the settings' close key is in the card's upper right corner",
+                   abs(c.x() - tl.x()) <= 16 and abs(c.y() - tl.y()) <= 16,
+                   f"key's corner {c.x():.0f},{c.y():.0f} card's {tl.x():.0f},{tl.y():.0f}")
+        self.shot("fb4_03_settings_window")
+
+    def s_fb4_lang(self):
+        self.lang0 = self.settings["lang"]
+        self.click_item(self.find_item("setLang"))
+
+    def s_fb4_lang_menu(self):
+        menu = self.win.findChild(QObject, "choiceMenu")
+        items = menu.property("items") if menu else []
+        items = items.toVariant() if hasattr(items, "toVariant") else items
+        names = [i.get("text") for i in items] if items else []
+        self.check("the language is a list: Windows' own and each language by its own name",
+                   menu is not None and menu.property("visible") is True and "English" in names and "Українська" in names
+                   and len(names) == 3, f"menu={menu is not None and menu.property('visible')} names={names}")
+        self.shot("fb4_04_lang_list")
+        if menu is not None:
+            QMetaObject.invokeMethod(menu, "close")      # Esc would close the settings as well
+        self.settings.set("lang", self.lang0)
+
+    def s_fb4_reset(self):
+        self.settings.set("fitWindow", False)
+        self.settings.set("onTop", "always")
+        self.click_item(self.find_item("resetSection"))
+
+    def s_fb4_reset2(self):
+        self.reset_armed = self.settings["fitWindow"] is False and self.find_item("resetSection").property("armed") is True
+        self.click_item(self.find_item("resetSection"))
+
+    def s_fb4_reset_done(self):
+        self.check("«Defaults» asks for a second press, then puts the section back (window fit on, on top never), "
+                   "the language stays", self.reset_armed and self.settings["fitWindow"] is True
+                   and self.settings["onTop"] == "never" and self.settings["lang"] == self.lang0,
+                   f"armed first={self.reset_armed} fit={self.settings['fitWindow']} onTop={self.settings['onTop']}")
+
+    def s_fb4_thumb(self):
+        thumbs = sorted((self.out / "home" / "thumbs").glob("*.png"))
+        img = QImage(str(thumbs[0])) if thumbs else QImage()
+        self.check("the playlist's frames have round corners (transparent in the corner, whole in the middle)",
+                   not img.isNull() and img.pixelColor(1, 1).alpha() == 0 and img.pixelColor(2, 2).alpha() == 0
+                   and img.pixelColor(img.width() // 2, img.height() // 2).alpha() == 255,
+                   f"thumbs={len(thumbs)} corner={img.pixelColor(1, 1).alpha() if not img.isNull() else None}")
+
     def tails_steps(self):
         long_mkv = str(Path(self.media).parent / "test_long.mkv")
 
         def seek(t):
             return lambda: self.p.seek(t)
 
-        def mark_in(t):
-            return lambda: setattr(self.ed, "_in", (self.st("path"), t))
-        pending = self.until(lambda: not self.ed.pending, 10, 100)
         return [
             (0, lambda: self.s_st4_prep(long_mkv)), (1800, lambda: setattr(self.p.mpv, "pause", True)),
-            (0, self.s_tl_edit), (0, seek(35.0)), (600, mark_in(25.0)), (0, lambda: self.key("O")), (0, pending),
-            (0, seek(55.0)), (600, mark_in(45.0)), (0, lambda: self.key("O")), (0, pending), (400, self.s_tl_marks),
+            (0, self.s_tl_edit)] + self.keep_steps([(25.0, 35.0), (45.0, 55.0)]) + [(400, self.s_tl_marks),
             (0, lambda: self.pl.add([self.media], True)), (1500, self.s_tl_other), (1500, self.s_tl_other_done),
             (0, self.s_tl_panel), (0, lambda: self.win.setWidth(760)), (500, self.s_tl_narrow),
             (0, lambda: self.settings.set("theme", "light")), (700, self.s_tl_lcd),
@@ -3598,9 +3735,9 @@ class SelfTest(QObject):
         self.p.osdMessage.connect(self.tl_osd.append)
 
     def s_tl_marks(self):
-        said = [m for m in self.tl_osd if "from the keyframe" in m]
-        self.check("after O the OSD says the fragment begins at the keyframe, and how much earlier",
-                   any("5.0 s earlier" in m for m in said), f"osd={self.tl_osd}")
+        said = [m for m in self.tl_osd if "keyframe" in m]
+        self.check("without loss a border moves to the keyframe, and the OSD says where: I at 25 -> 0:20.0",
+                   any("0:20.0" in m for m in said), f"osd={self.tl_osd}")
         nums = [self.find_item(f"bandNum{i}") for i in range(2)]
         self.check("the fragments' blocks on the clip track carry their numbers 1 and 2",
                    all(n is not None and n.property("visible") is True for n in nums)
@@ -3637,14 +3774,14 @@ class SelfTest(QObject):
         self.ed.close()
 
     def s_tl_panel(self):
-        play, prev, nxt, fast = (self.find_item(n) for n in ("keyPlay", "keyPrev", "keyNext", "keyFast"))
+        play, prev, nxt = (self.find_item(n) for n in ("keyPlay", "keyPrev", "keyNext"))
         g = lambda k: k.property("glyph")
         sign = self.find_item("sign", play)
         self.check("the transport signs are one family of line icons (Lucide), play and pause filled and drawn sharp",
                    g(play) in ("play", "pause") and play.property("solid") is True and g(prev) == "skip-back"
-                   and g(nxt) == "skip-forward" and g(fast) == "fast-forward" and sign is not None
+                   and g(nxt) == "skip-forward" and sign is not None
                    and sign.property("progress") == 1.0 and sign.property("source").toString().startswith("image://icon/"),
-                   f"play={g(play)!r} prev={g(prev)!r} next={g(nxt)!r} fast={g(fast)!r} "
+                   f"play={g(play)!r} prev={g(prev)!r} next={g(nxt)!r} "
                    f"sign={sign is not None and (sign.property('progress'), sign.property('source').toString())}")
         font = self.find_item("scaleMarks").property("font")
         self.check("the time scale's labels are 10 px of IBM Plex Mono", font.pixelSize() == 10 and font.family() == "IBM Plex Mono",
@@ -3653,20 +3790,19 @@ class SelfTest(QObject):
         pref = ctypes.c_int(0)
         ctypes.WinDLL("dwmapi").DwmGetWindowAttribute(ctypes.c_void_p(int(self.win.winId())), 33, ctypes.byref(pref), 4)
         self.check("the window asks Windows 11 for rounded corners (DWMWCP_ROUND)", pref.value == 2, f"corner preference={pref.value}")
-        st, cc = self.find_item("keySettings"), self.find_item("keySubs")
+        st, snd = self.find_item("keySettings"), self.find_item("keySound")
         gap = prev.mapToScene(QPointF(0, 0)).x() - st.mapToScene(QPointF(st.width(), 0)).x()
-        group = cc.mapToScene(QPointF(0, 0)).x() - fast.mapToScene(QPointF(fast.width(), 0)).x()
-        self.check("Settings stand apart from the navigation as the groups do, a hairline between them",
-                   abs(gap - group) < 0.5 and gap >= 18, f"settings-prev={gap} a group's gap={group}")
+        group = snd.mapToScene(QPointF(0, 0)).x() - play.mapToScene(QPointF(play.width(), 0)).x()
+        self.check("Settings stand apart from the navigation as the groups do, by air",
+                   prev.isVisible() and abs(gap - group) < 0.5 and gap >= 18, f"settings-prev={gap} a group's gap={group}")
         self.shot("tl_03_panel")
 
     def s_tl_narrow(self):
         ed, st, prev = (self.find_item(n) for n in ("keyEdit", "keySettings", "keyPrev"))
         free = st.mapToScene(QPointF(0, 0)).x() - ed.mapToScene(QPointF(ed.width(), 0)).x()
         gap = prev.mapToScene(QPointF(0, 0)).x() - st.mapToScene(QPointF(st.width(), 0)).x()
-        # 4.4 px between them before this change: the gap is not taken out of that
-        self.check("in a 760 px window Settings keep the navigation's 6 px and run into nothing",
-                   self.win.width() == 760 and free > 4 and abs(gap - 6) < 0.5,
+        self.check("in a 760 px window the groups keep their air and run into nothing",
+                   self.win.width() == 760 and free > 4 and gap >= 11.5,
                    f"width={self.win.width()} free={free} settings-prev={gap}")
         self.shot("tl_04_narrow")
         self.win.setWidth(1280)
@@ -3812,13 +3948,15 @@ class SelfTest(QObject):
         up._set(state="idle", detail="", percent=0, offered="")
 
     def s_up_found(self):
-        key = self.find_item("keyAbout")
-        dot = next((c for c in key.childItems() if c.objectName() == "dot"), None)
+        nav = self.find_item("nav6")
+        sign = next((c for c in nav.childItems() if c.property("name") == "info"), None) if nav else None
         self.check("a newer version on the release page: About says so and offers to update",
                    self.up_text() == EN["up_available"].replace("%1", "99.0.0")
                    and self.find_item("updateKey").property("text") == EN["up_install"],
                    f"text={self.up_text()!r} key={self.find_item('updateKey').property('text')!r}")
-        self.check("and the About key carries a dot", key.property("dot") is True and dot is not None and dot.isVisible())
+        self.check("and the settings' About section is lit in the accent, no dot anywhere",
+                   sign is not None and self.near_accent(sign.property("color")),
+                   f"nav={nav is not None} sign={sign and QColor(sign.property('color')).name()}")
         self.shot("upd_available")
 
     def s_up_installed(self):

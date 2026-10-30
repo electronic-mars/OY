@@ -195,13 +195,12 @@ class Editor(QObject):
         # pts (fractions of the picture), text
         self._notes = []
         self._noteSel = -1
-        self._in = None              # (path, seconds) of the pending start mark
+        self._snaps = {}             # (path, border) -> also the end before it: waiting for its keyframe
         self.codec = "copy"          # setting "exportCodec": copy | h264 | h265
         self._probes = {}
         # ffprobe runs off the GUI thread, which also draws the picture: a fragment is on the
         # strip at once and its keyframe (where a copied fragment really begins) follows.
         self._kfs = {}               # (path, start) -> the keyframe at or before start
-        self._said, self._told = None, False     # the last O's (path, start, end), and whether the OSD said it
         self._asked = set()          # (path, start) being read
         self._reader = ThreadPoolExecutor(max_workers=1)
         self._queued = ""            # a save asked for while keyframes were still being read
@@ -231,10 +230,6 @@ class Editor(QObject):
     @Property(int, notify=changed)
     def selected(self):
         return self._selected
-
-    @Property(float, notify=changed)
-    def markIn(self):
-        return self._in[1] if self._in and self._in[0] == self.p.path else -1.0
 
     def _why_not_copy(self):
         """What keeps the edit from being saved by copying; empty when nothing does."""
@@ -322,6 +317,14 @@ class Editor(QObject):
         return self._preview
 
     @Property(bool, notify=changed)
+    def edited(self):
+        """Something to save: more than one file whole and bare."""
+        if self._notes or len(self.frags) != 1:
+            return bool(self.frags)
+        f = self.frags[0]
+        return f["start"] > MIN_LEN or f["end"] < self._length(f["path"]) - MIN_LEN
+
+    @Property(bool, notify=changed)
     def pending(self):
         """Some fragment's keyframe is still being read."""
         return any(self._kf(f) is None for f in self.frags)
@@ -389,8 +392,8 @@ class Editor(QObject):
             self._probes[path] = pr
         self._kfs[(path, start)] = kf
         self._asked.discard((path, start))
-        if self._said and self._said[:2] == (path, start):
-            self._say_kf()
+        if (path, start) in self._snaps:
+            self._snap_border(path, start, kf)
         self.changed.emit()
         if self._queued and not self.pending:
             url, self._queued = self._queued, ""
@@ -405,7 +408,7 @@ class Editor(QObject):
 
     # ---- undo: every change keeps the state it replaced, under a name for the OSD
     def _snap(self):
-        return copy.deepcopy((self.frags, self._notes, self._in, self._selected, self._noteSel))
+        return copy.deepcopy((self.frags, self._notes, self._selected, self._noteSel))
 
     def _push(self, what, state, merge=None):
         """merge: a key; calls with the same key in quick succession (a drag) are one step."""
@@ -427,7 +430,7 @@ class Editor(QObject):
             return
         what, state = src.pop()
         dst.append((what, self._snap()))
-        self.frags, self._notes, self._in, self._selected, self._noteSel = state
+        self.frags, self._notes, self._selected, self._noteSel = state
         self._preview, self._merge, self._active, self._cue = -1, None, True, -1
         for f in self.frags:
             self._ask(f["path"], f["start"])
@@ -450,6 +453,8 @@ class Editor(QObject):
             self.close()
         elif self.p.hasFile:
             self._active = True
+            if self._tools():
+                self._ensure(self.p.path)
             self.changed.emit()
 
     @Slot()
@@ -465,6 +470,8 @@ class Editor(QObject):
             return None, 0.0
         if not self._active:
             self._active = True
+            if self._tools():
+                self._ensure(self.p.path)
         return self.p.path, float(self.p.position or 0.0)
 
     def _fragment(self, path, start, end):
@@ -477,87 +484,106 @@ class Editor(QObject):
     def _length(self, path):
         return (self._probes.get(path) or {}).get("duration") or self.p.duration
 
+    # The edit holds the whole file from the start; I, O and the scissors take away (council 3):
+    # I cuts off what is before here, O what is after, X splits the piece here, Delete takes
+    # a piece out. Pressing again only moves the border.
+    def _ensure(self, path):
+        """The file in the edit: whole, when none of it is there yet."""
+        if not any(f["path"] == path for f in self.frags):
+            self.frags.append(self._fragment(path, 0.0, self._length(path)))
+
+    def _here_piece(self, path, t):
+        """The row of this file's piece the position is in, or -1."""
+        return next((n for n, f in enumerate(self.frags)
+                     if f["path"] == path and f["start"] - 0.01 <= t <= f["end"] + 0.01), -1)
+
+    def _border(self, path, t, also_end):
+        """A new border at t: copied without loss, a piece can only begin at a keyframe, so once
+        the keyframe before t is read the border moves there, and the cursor with it — what is
+        seen is what is saved (also_end: the piece before ends there too)."""
+        self._snaps[(path, t)] = also_end
+        self._ask(path, t)
+        if (path, t) in self._kfs:
+            self._snap_border(path, t, self._kfs[(path, t)])
+
+    def _snap_border(self, path, t, kf):
+        also_end = self._snaps.pop((path, t), None)
+        if also_end is None or not self.lossless or kf >= t - 0.01:
+            return
+        for f in self.frags:
+            if f["path"] != path:
+                continue
+            if abs(f["start"] - t) < 1e-6:
+                f["start"] = kf
+            elif also_end and abs(f["end"] - t) < 1e-6:
+                f["end"] = kf
+        self._kfs[(path, kf)] = kf
+        if self.p.path == path:
+            self.p.seek(kf)
+        self.p.osdMessage.emit(tr("osd_on_keyframe", fmt(kf)))
+        log.info("edit border %s %.2f -> keyframe %.2f", Path(path).name, t, kf)
+
     @Slot()
     def setIn(self):
-        path, t = self._here()
-        if path:
-            self._mark(tr("undo_in", fmt(t)))
-            self._in = (path, t)
-            self._cue = -1           # a new mark: Space plays the file again
-            self.p.osdMessage.emit(tr("osd_in", fmt(t)))
-            self.changed.emit()
-
-    def _range(self):
-        path, t = self._here()
-        if not path:
-            return None
-        start = self._in[1] if self._in and self._in[0] == path else 0.0
-        self._in = None
-        if t - start < MIN_LEN:
-            self.p.osdMessage.emit(tr("osd_end_before_start"))
-            self.changed.emit()
-            return None
-        return path, start, t
+        """I: what comes before here goes."""
+        self._trim("start")
 
     @Slot()
     def setOut(self):
-        """O: the range from the start mark (or the file's beginning) becomes a fragment."""
-        if not self._tools():
+        """O: what comes after here goes."""
+        self._trim("end")
+
+    def _trim(self, side):
+        path, t = self._here()
+        if not path or not self._tools():
             return
         before = self._snap()
-        r = self._range()
-        if r:
-            self._push(tr("undo_fragment", fmt(r[1]), fmt(r[2])), before)
-            self.frags.append(self._fragment(*r))
-            self._choose(frag=len(self.frags) - 1)
-            log.info("edit add %s %.2f-%.2f", Path(r[0]).name, r[1], r[2])
-            self._said = r
-            self._say_kf()
+        self._ensure(path)
+        mine = [f for f in self.frags if f["path"] == path]
+        keep = [f for f in mine if (f["end"] > t + MIN_LEN if side == "start" else f["start"] < t - MIN_LEN)]
+        if not keep:
+            self.frags = before[0]          # the whole file just put in, if it was, goes again
+            self.p.osdMessage.emit(tr("osd_nothing_after" if side == "start" else "osd_nothing_before"))
             self.changed.emit()
-
-    def _say_kf(self):
-        """The OSD after O; a copied fragment that begins at an earlier keyframe says so once
-        the keyframe is known (it is read on its own thread)."""
-        path, start, end = self._said
-        kf = self._kfs.get((path, start))
-        if kf is None and self.lossless:
-            if not self._told:
-                self._told = True
-                self.p.osdMessage.emit(tr("osd_fragment", fmt(start), fmt(end)))
             return
-        shift = start - kf if self.lossless else 0
-        more = tr("osd_from_keyframe", dec(f"{shift:.1f}")) if shift > 0.05 else ""
-        if more or not self._told:
-            self.p.osdMessage.emit(tr("osd_fragment", fmt(start), fmt(end)) + more)
-        self._said, self._told = None, False
+        self._push(tr("undo_in" if side == "start" else "undo_out", fmt(t)), before)
+        self.frags = [f for f in self.frags if f["path"] != path or f in keep]
+        for f in keep:
+            if side == "start" and f["start"] < t:
+                f["start"] = t
+                self._border(path, t, False)
+            elif side == "end" and f["end"] > t:
+                f["end"] = t
+        self._selected = min(self._selected, len(self.frags) - 1)
+        self._preview = -1
+        log.info("edit %s %s %.2f -> %d pieces", side, Path(path).name, t, len(self.frags))
+        self.p.osdMessage.emit(tr("osd_in" if side == "start" else "osd_out", fmt(t)))
+        self.changed.emit()
 
     @Slot()
     def cutOut(self):
-        """X: take the range out of this file's fragments, splitting one if the range is
-        inside it. A file with no fragment yet counts as kept whole."""
-        if not self._tools():
+        """X: the piece is split here; the right half is chosen, ready for Delete."""
+        path, t = self._here()
+        if not path or not self._tools():
             return
         before = self._snap()
-        r = self._range()
-        if not r:
+        self._ensure(path)
+        row = self._here_piece(path, t)
+        f = self.frags[row] if row >= 0 else None
+        if f is None or not f["start"] + MIN_LEN < t < f["end"] - MIN_LEN:
+            self.frags = before[0]
+            self.p.osdMessage.emit(tr("osd_no_split"))
+            self.changed.emit()
             return
-        path, a, b = r
-        self._push(tr("undo_cut", fmt(a), fmt(b)), before)
-        if not any(f["path"] == path for f in self.frags):
-            self.frags.append(self._fragment(path, 0.0, self._length(path)))
-        out = []
-        for f in self.frags:
-            if f["path"] != path or f["end"] <= a or f["start"] >= b:
-                out.append(f)
-                continue
-            if f["start"] < a - MIN_LEN:
-                out.append(dict(f, end=a))
-            if f["end"] > b + MIN_LEN:
-                out.append(self._fragment(path, b, f["end"]) | {"aid": f["aid"]})
-        self.frags = out
-        self._selected = min(self._selected, len(out) - 1)
-        log.info("edit cut %s %.2f-%.2f -> %d fragments", Path(path).name, a, b, len(out))
-        self.p.osdMessage.emit(tr("osd_cut", fmt(a), fmt(b)))
+        self._push(tr("undo_cut", fmt(t)), before)
+        right = self._fragment(path, t, f["end"]) | {"aid": f["aid"]}
+        f["end"] = t
+        self.frags.insert(row + 1, right)
+        self._choose(frag=row + 1)
+        self._preview = -1
+        self._border(path, t, True)
+        log.info("edit split %s at %.2f -> %d pieces", Path(path).name, t, len(self.frags))
+        self.p.osdMessage.emit(tr("osd_cut", fmt(t)))
         self.changed.emit()
 
     @Slot()
@@ -577,9 +603,12 @@ class Editor(QObject):
         path, t = self._here()
         if not path:
             return -1
-        end = min(t + NOTE_SECONDS, self.p.duration or t + NOTE_SECONDS)
+        # drawn on a frame that already shows drawings: on screen together with the last of them,
+        # so two arrows in a row come and go together; else from here for NOTE_SECONDS
+        shown = [n for n in self._notes if n["path"] == path and n["a"] <= t <= n["b"]]
+        a, b = (shown[-1]["a"], shown[-1]["b"]) if shown else             (t, max(min(t + NOTE_SECONDS, self.p.duration or t + NOTE_SECONDS), t + NOTE_MIN))
         self._mark(tr("undo_add", tr("note_" + kind)))
-        self._notes.append({"kind": kind, "path": path, "a": t, "b": max(end, t + NOTE_MIN), "color": color,
+        self._notes.append({"kind": kind, "path": path, "a": a, "b": b, "color": color,
                             "pts": [[float(x), float(y)] for x, y in pts], "text": ""})
         self._choose(note=len(self._notes) - 1)
         log.info("note %s at %.2f in %s", kind, t, Path(path).name)
@@ -686,7 +715,10 @@ class Editor(QObject):
 
     @Slot()
     def removeSelected(self):
-        """Delete: the chosen drawing if there is one, else the chosen fragment."""
+        """Delete: the chosen drawing if there is one, else the chosen piece, else the piece
+        the position is in."""
+        if self._noteSel < 0 and not 0 <= self._selected < len(self.frags):
+            self._selected = self._here_piece(self.p.path, float(self.p.position or 0.0))
         if 0 <= self._noteSel < len(self._notes):
             self._mark(tr("undo_delete", tr("note_" + self._notes[self._noteSel]["kind"])))
             del self._notes[self._noteSel]
@@ -722,9 +754,12 @@ class Editor(QObject):
 
     @Slot()
     def clear(self):
-        if self.frags or self._in:
-            self._mark(tr("undo_clear"))
-        self.frags, self._selected, self._cue, self._in, self._preview = [], -1, -1, None, -1
+        """The edit back to the whole playing file (the right button on the bin)."""
+        if not self.p.hasFile:
+            return
+        self._mark(tr("undo_clear"))
+        self.frags, self._selected, self._cue, self._preview = [], -1, -1, -1
+        self._ensure(self.p.path)
         self.changed.emit()
 
     # ---- preview: only the fragments, in order
@@ -752,6 +787,24 @@ class Editor(QObject):
         """Enter on a chosen fragment: the edit plays from it, on into the next ones."""
         if 0 <= row < len(self.frags):
             self._play(row)
+
+    @Slot(float)
+    def playAtEdit(self, sec):
+        """A click on the result's bar: the finished video plays on from that second of it."""
+        for row, f in enumerate(self.frags):
+            d = f["end"] - self._from(f)
+            if sec < d or row == len(self.frags) - 1:
+                pos = self._from(f) + max(0.0, min(sec, d - END_SLACK))
+                self._preview, self._armed = row, False
+                self._choose(frag=row)
+                if f["path"] == self.p.path:
+                    self.p.seek(pos)
+                else:
+                    self.p.openAt(f["path"], pos)
+                self.p.mpv.pause = False
+                self.changed.emit()
+                return
+            sec -= d
 
     @Slot()
     def togglePreview(self):

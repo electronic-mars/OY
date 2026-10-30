@@ -52,17 +52,18 @@ Item {
         id: tools
         anchors.verticalCenter: parent.verticalCenter
         spacing: strip.gap
-        // three letters, as the keys are: I, O, X (the hints say what they do)
-        KeyCap { objectName: "editIn"; label: "I"; tip: L.t.es_in; anchors.verticalCenter: parent.verticalCenter
+        // the edit holds the whole file; these take away. Read as a ruler: |← ✂ →| (council 3)
+        KeyCap { objectName: "editIn"; glyph: "arrow-left-to-line"; tip: L.t.es_in; anchors.verticalCenter: parent.verticalCenter
                  onClicked: actions.run("mark_in") }
-        KeyCap { objectName: "editOut"; label: "O"; tip: L.t.es_out; anchors.verticalCenter: parent.verticalCenter
-                 onClicked: actions.run("mark_out") }
-        KeyCap { objectName: "editCut"; label: "X"; tip: L.t.es_cut; anchors.verticalCenter: parent.verticalCenter
+        KeyCap { objectName: "editCut"; glyph: Theme.icCut; tip: L.t.es_cut; anchors.verticalCenter: parent.verticalCenter
                  onClicked: actions.run("cut_out") }
-        KeyCap { glyph: Theme.icWhole; tip: L.t.es_whole; visible: Theme.tier > 0; anchors.verticalCenter: parent.verticalCenter
-                 onClicked: actions.run("edit_whole") }
-        KeyCap { glyph: Theme.icDelete; tip: L.t.es_clear; enabled: strip.frags.length > 0
-                 anchors.verticalCenter: parent.verticalCenter; onClicked: editor.clear() }
+        KeyCap { objectName: "editOut"; glyph: "arrow-right-to-line"; tip: L.t.es_out; anchors.verticalCenter: parent.verticalCenter
+                 onClicked: actions.run("mark_out") }
+        KeyCap { objectName: "editDelete"; glyph: Theme.icDelete; tip: L.t.es_clear; enabled: strip.frags.length > 0
+                 second: true
+                 anchors.verticalCenter: parent.verticalCenter
+                 onClicked: editor.removeSelected()
+                 onRightClicked: editor.clear() }
         Sep {}
         // frame by frame: only where the row has the room (Ctrl+← → do it in any window)
         KeyCap { objectName: "editFrameBack"; glyph: "step-back"; tip: L.t.t_frame_back; enabled: player.hasFile
@@ -90,12 +91,36 @@ Item {
         anchors { left: tools.right; leftMargin: 16; right: info.left; rightMargin: 16
                   top: parent.top; bottom: parent.bottom; topMargin: 4; bottomMargin: 4 }
         Text {
-            visible: strip.frags.length === 0 && !editor.exporting && editor.error === ""
+            visible: !editor.edited && editor.previewing < 0 && !editor.exporting && editor.error === ""
             anchors.fill: parent
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
             text: L.t.es_hint
             color: Theme.tx3; font.family: Theme.uiFont; font.pixelSize: 11
+        }
+        // the result playing: where in the finished video, its pieces' joints; a click goes there
+        Rectangle {
+            id: resultBar
+            objectName: "resultBar"
+            visible: editor.previewing >= 0 && !editor.exporting
+            anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter }
+            height: 14; radius: 7
+            color: Theme.groove; border.color: Theme.line
+            Rectangle {
+                x: 2; y: 2; height: parent.height - 4; radius: 5
+                width: editor.total > 0 ? Math.min(1, strip.played / editor.total) * (parent.width - 4) : 0
+                color: Theme.acc
+            }
+            Repeater {
+                model: strip.frags.length > 1 ? strip.frags.length - 1 : 0
+                Rectangle {
+                    readonly property real at: strip.frags.slice(0, index + 1).reduce((a, f) => a + f.dur, 0)
+                    x: 2 + at / Math.max(0.001, editor.total) * (resultBar.width - 4) - 1
+                    y: -3; width: 2; height: resultBar.height + 6; color: Theme.tx2
+                }
+            }
+            MouseArea { anchors.fill: parent; anchors.margins: -6; cursorShape: Qt.PointingHandCursor
+                        onClicked: (m) => editor.playAtEdit(Math.max(0, m.x - 8) / (resultBar.width - 4) * editor.total) }
         }
         // saving: a progress groove
         Rectangle {
@@ -163,7 +188,8 @@ Item {
             Text {
                 objectName: "editSummary"
                 anchors.baseline: parent.children[0].baseline
-                visible: strip.frags.length > 0 && strip.width >= 1150      // in a narrower window: the length and the mode
+                // in a narrower window, or while the result plays (its bar takes the room): the length and the mode
+                visible: strip.frags.length > 0 && strip.width >= 1150 && editor.previewing < 0
                 text: L.t.es_to_file.arg(strip.frags.length + " " + L.plural(strip.frags.length, L.t.frag_forms))
                 color: Theme.tx2; font.family: Theme.uiFont; font.pixelSize: 11
             }
@@ -209,12 +235,16 @@ Item {
                 onPicked: (x) => settings.set("exportCodec", x)
             }
         }
-        KeyCap { objectName: "editPreview"; glyph: Theme.icPreview; latched: editor.previewing >= 0
+        // the finished video, always from its start (again: stop)
+        // the words only where the row has the room (the middle keeps its say: progress, a failure)
+        KeyCap { objectName: "editPreview"; glyph: "clapperboard"; caption: strip.width >= 1150 ? L.t.es_result : ""
+                 latched: editor.previewing >= 0
                  tip: L.t.es_preview; enabled: strip.frags.length > 0
                  anchors.verticalCenter: parent.verticalCenter
                  onClicked: actions.run("edit_preview") }
         // the editor closes (Esc does the same); the edit stays for Ctrl+E
-        KeyCap { objectName: "editClose"; flat: true; caption: L.t.es_close; tip: L.t.es_close_tip
+        KeyCap { objectName: "editClose"; flat: true; glyph: Theme.icClose; caption: strip.width >= 1150 ? L.t.es_close : ""
+                 tip: L.t.es_close_tip
                  anchors.verticalCenter: parent.verticalCenter
                  onClicked: editor.close() }
         // saves at once beside the source; «Save as…» on the right button
@@ -224,7 +254,7 @@ Item {
                  latched: editor.exporting
                  second: !editor.exporting
                  tip: editor.exporting ? L.t.es_cancel_save : L.t.es_save
-                 enabled: strip.frags.length > 0
+                 enabled: editor.exporting || editor.edited
                  anchors.verticalCenter: parent.verticalCenter
                  onClicked: editor.exporting ? editor.cancelExport() : actions.run("edit_save")
                  onRightClicked: actions.run("edit_save_as") }

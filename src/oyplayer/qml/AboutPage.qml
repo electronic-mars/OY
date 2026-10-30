@@ -1,15 +1,16 @@
 import QtQuick
-import QtQuick.Controls
 
-// About (the title bar's first button): what this is, which version, where it keeps its things.
-Popup {
+// About (the settings' last section): what this is, which version, where it keeps its things,
+// and the update.
+Column {
     id: about
-    anchors.centerIn: Overlay.overlay
-    width: 380
-    padding: 18
-    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-    background: FloatCard {}
-    contentItem: Column {
+    readonly property real availableWidth: width - 2 * padding
+    property real padding: 18
+    spacing: 8
+    Item { width: 1; height: about.padding - about.spacing }
+    Column {
+        x: about.padding
+        width: about.availableWidth
         spacing: 8
         Row {
             spacing: 12
@@ -80,4 +81,5 @@ Popup {
             Rectangle { width: parent.width * updater.percent / 100; height: parent.height; radius: 1.5; color: Theme.acc }
         }
     }
+    Item { width: 1; height: about.padding - about.spacing }
 }

@@ -93,11 +93,13 @@ class AppInfo(QObject):
         from . import assoc
         return assoc.registered()
 
-    @Slot()
-    def registerFileTypes(self):
+    @Slot(bool, bool)
+    def registerFileTypes(self, audio, openWindows=True):
         from . import assoc
-        assoc.register(notify=not self._selftest)
+        assoc.register(notify=not self._selftest, audio=audio)
         self.changed.emit()
+        if not openWindows:
+            return
         if self._selftest:
             log.info("self-test: Windows' default apps page not opened")
         else:
@@ -226,6 +228,9 @@ def main(argv):
                   actions.keysChanged):
         lang.changed.connect(texts)
 
+    # Text through Windows' own hinting, as other programs draw it: Qt's default (distance
+    # fields) keeps the letters' outlines soft at 11-13 px
+    QQuickWindow.setTextRenderType(QQuickWindow.TextRenderType.NativeTextRendering)
     engine = QQmlApplicationEngine()
     ctx = engine.rootContext()
     ctx.setContextProperty("player", player)

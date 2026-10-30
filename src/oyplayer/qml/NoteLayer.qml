@@ -136,8 +136,10 @@ Item {
                 // a copy: what editor.notes gives is a live view, it would move along with the drag
                 moving = { i: i, from: p, pts: editor.notes[i].pts.map(q => [q[0], q[1]]) }
             } else if (layer.tool === "text") {
+                if (!player.paused) player.togglePause()   // a drawing belongs to the frame it is drawn on
                 input.start(editor.addNote("text", [p], layer.ink.toString()))
             } else {
+                if (!player.paused) player.togglePause()
                 layer.draft = { kind: layer.tool, color: layer.ink.toString(), pts: [p, p], text: "", i: -1 }
             }
         }

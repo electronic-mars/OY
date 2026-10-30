@@ -48,7 +48,11 @@ Window {
     readonly property int edge: Theme.tier ? 24 : 12
     readonly property int keyGap: Theme.tier ? 8 : 6
     property bool chromeAwake: true            // fullscreen: panels shown after a mouse move
-    readonly property bool chromeShown: !fs || chromeAwake
+    // a click on the picture (setting "leftClick" or "middleClick"): the title bar, the panel and
+    // the list step aside, windowed or full screen, until the next such click (or Esc)
+    property bool uiHidden: false
+    readonly property bool chromeShown: (!fs || chromeAwake) && !uiHidden
+    readonly property bool bare: fs || uiHidden        // the picture takes the whole window
     property bool playlistShown: false
     // The area the keyboard works in: "list" (the playlist, any tab), "strip" (the edit's
     // fragments) or "" (the commands). F6 / Shift+F6 or a click in an area gives it the keys;
@@ -62,10 +66,10 @@ Window {
     // own width is set from it by Alt+1 and the fit to a picture)
     readonly property int playlistW: 350
     // windowed: the playlist takes its own column; fullscreen: it lies over the picture
-    readonly property int sideW: playlistShown && !fs ? playlistW : 0
+    readonly property int sideW: playlistShown && !bare ? playlistW : 0
 
     function updateMargins() {
-        if (fs) player.setVideoMargins(0, 0, 0)
+        if (bare) player.setVideoMargins(0, 0, 0)
         else player.setVideoMargins(titleH / height, panelH / height, sideW / width)
     }
     onHeightChanged: updateMargins()
@@ -73,6 +77,14 @@ Window {
     onSideWChanged: updateMargins()
     onPanelHChanged: updateMargins()
     onFsChanged: { updateMargins(); wake() }
+    onUiHiddenChanged: updateMargins()
+    // the editor's panel is its work surface: it does not step aside
+    Connections { target: editor; function onChanged() { if (editor.active) win.uiHidden = false } }
+    function mouseAction(a) {
+        if (a === "chrome" && !editor.active) uiHidden = !uiHidden
+        else if (a === "chrome" || a === "pause") actions.run("play_pause")
+        else if (a === "fullscreen") actions.run("fullscreen")
+    }
     Component.onCompleted: updateMargins()
 
     function toggleFullscreen() {
@@ -80,8 +92,8 @@ Window {
     }
     // one sign for «a menu or card is open»: Esc closes it first, the fullscreen panels stay
     // while it is open, and the hints of the keys under it keep quiet (Tip.qml)
-    readonly property var menus: [subsMenu, speedMenu, audioMenu, schedMenu, skipMenu]
-    readonly property var popups: menus.concat([videoPanel, infoPanel, settingsPanel, aboutPanel])
+    readonly property var menus: [subsMenu, speedMenu, audioMenu, pictureMenu, schedMenu, skipMenu]
+    readonly property var popups: menus.concat([videoPanel, infoPanel, settingsPanel])
     readonly property bool menuOpen: menus.some(m => m.visible)        // it takes the arrows and Enter
     readonly property bool popupOpen: popups.some(p => p.visible)
     onPopupOpenChanged: wake()
@@ -105,7 +117,9 @@ Window {
                          "fullscreen", win.fs)
             if (win.popupOpen) win.popups.forEach(p => p.close())
             else if (scheduler.countdown > 0) scheduler.abort()
+            else if (win.uiHidden) win.uiHidden = false
             else if (win.fs) win.showNormal()
+            else if (editor.active && win.drawTool !== "select") win.drawTool = "select"   // a drawing tool first
             else if (editor.active) editor.close()
             else win.close()
         }
@@ -229,8 +243,37 @@ Window {
                 { text: L.t.m_sub_copy, run: () => player.copySubtitle() })
         return it
     }
-    function openSubsMenu() { subsMenu.items = subsItems(); subsMenu.open() }
-    function openAudioMenu() {
+    // A menu opens over its key, or, when it comes from the picture's menu or its key is not on
+    // the panel, where the picture was clicked (or in the picture's middle, from a key press)
+    function popMenu(menu, key, at) {
+        if (!at && (!key || !key.visible))
+            at = Qt.point(videoArea.x + videoArea.width / 2 - 125, videoArea.y + videoArea.height / 2 - 120)
+        if (at) {
+            menu.parent = Overlay.overlay
+            menu.x = Math.max(8, Math.min(at.x, win.width - 268))
+            menu.y = Math.max(8, Math.min(at.y, win.height - menu.implicitHeight - 8))
+        } else {
+            menu.parent = key
+            menu.x = 0
+            menu.y = Qt.binding(() => -menu.implicitHeight - 12)
+        }
+        menu.open()
+    }
+    function openSubsMenu(at) { subsMenu.items = subsItems(); popMenu(subsMenu, ccKey, at) }
+    function openPictureMenu(at) {
+        pictureMenu.items = [
+            { text: L.t.act_open_file + "…", run: () => actions.run("open_file") },
+            { separator: true },
+            { text: L.t.cm_speed, enabled: player.hasFile, run: () => win.openSpeedMenu(at) },
+            { text: L.t.cm_subs, enabled: player.hasFile, run: () => win.openSubsMenu(at) },
+            { text: L.t.cm_sound, run: () => win.openAudioMenu(at) },
+            { text: L.t.act_video_panel, enabled: player.hasFile, run: () => videoPanel.open() },
+            { separator: true },
+            { text: L.t.cm_shot, enabled: player.hasFile, run: () => actions.run("screenshot") },
+            { text: L.t.act_file_info, enabled: player.hasFile, run: () => actions.run("file_info") }]
+        popMenu(pictureMenu, null, at)
+    }
+    function openAudioMenu(at) {
         var it = [{ header: L.t.m_audio }], tr = player.audioTracks
         for (var i = 0; i < tr.length; i++) {
             let id = tr[i].id
@@ -258,16 +301,16 @@ Window {
                 { text: L.t.act_pitch_down, keepOpen: true, run: () => actions.run("pitch_down") },
                 { text: L.t.act_pitch_reset, run: () => actions.run("pitch_reset") })
         audioMenu.items = it
-        audioMenu.open()
+        popMenu(audioMenu, soundKey, at)
     }
-    function openSpeedMenu() {
+    function openSpeedMenu(at) {
         var speeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4], it = [{ header: L.t.m_speed }]
         for (var i = 0; i < speeds.length; i++) {
             let s = speeds[i]
             it.push({ text: String(s).replace(".", L.t.dec) + "×", checked: Math.abs(player.speed - s) < 0.001, run: () => player.setSpeed(s) })
         }
         speedMenu.items = it
-        speedMenu.open()
+        popMenu(speedMenu, playKey, at)
     }
     Connections {
         target: player
@@ -331,15 +374,32 @@ Window {
         onAccepted: playlist.save(selectedFile.toString())
     }
 
-    // ---------- the video area: click pauses, drag moves the window, double click = fullscreen
+    // ---------- the mouse's other buttons, anywhere in the window (the keys take only the left
+    // and right ones): the middle one as set (full screen), back and forward seek or change the file
+    Item {
+        anchors.fill: parent
+        TapHandler {
+            objectName: "otherButtons"
+            acceptedButtons: Qt.MiddleButton | Qt.BackButton | Qt.ForwardButton
+            onTapped: (ev, button) => {
+                if (button === Qt.MiddleButton) { win.mouseAction(settings.values.middleClick); return }
+                var fwd = button === Qt.ForwardButton, side = settings.values.sideButtons
+                if (side === "seek") actions.run(fwd ? "seek_forward" : "seek_backward")
+                else if (side === "track") actions.run(fwd ? "next" : "prev")
+            }
+        }
+    }
+
+    // ---------- the video area: a click as set (hides the panels), drag moves the window,
+    // double click = fullscreen
     MouseArea {
         id: videoArea
         anchors.fill: parent
-        anchors.topMargin: win.fs ? 0 : win.titleH
-        anchors.bottomMargin: win.fs ? 0 : win.panelH
+        anchors.topMargin: win.bare ? 0 : win.titleH
+        anchors.bottomMargin: win.bare ? 0 : win.panelH
         anchors.rightMargin: win.sideW
         hoverEnabled: true
-        acceptedButtons: Qt.LeftButton
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
         cursorShape: win.fs && !win.chromeAwake ? Qt.BlankCursor : Qt.ArrowCursor
         property point pressAt
         property bool moved: false
@@ -352,12 +412,23 @@ Window {
                 win.startSystemMove()
             }
         }
-        onClicked: if (!moved) actions.run("play_pause")
-        // the first click of a double click already paused; undo it, then act
-        onDoubleClicked: {
+        // a pause answers at once (a double click undoes it); hiding the panels waits out a
+        // double click, so a double click does not flash them away and back
+        readonly property string click: settings.values.leftClick === "chrome" && editor.active ? "pause" : settings.values.leftClick
+        onClicked: (m) => {
+            if (moved) return
+            if (m.button === Qt.RightButton) { win.openPictureMenu(Qt.point(m.x + x, m.y + y)); return }
+            if (!player.hasFile) { actions.run("open_file"); return }      // the empty window: a click opens
+            if (click === "pause") actions.run("play_pause")
+            else if (click === "chrome") clickTimer.restart()
+        }
+        Timer { id: clickTimer; interval: Qt.styleHints.mouseDoubleClickInterval; onTriggered: win.mouseAction("chrome") }
+        onDoubleClicked: (m) => {
+            if (m.button !== Qt.LeftButton || !player.hasFile) return
+            clickTimer.stop()
             var dc = settings.values.doubleClick
             if (dc === "none") return
-            actions.run("play_pause")
+            if (click === "pause") actions.run("play_pause")
             actions.run(dc === "pause" ? "play_pause" : "fullscreen")
         }
         onWheel: (w) => {
@@ -437,7 +508,7 @@ Window {
     Text {
         id: osd
         objectName: "osd"
-        x: 18; y: (win.fs ? 0 : win.titleH) + 14 + (editor.active && win.chromeShown ? 44 : 0)   // under the tool card
+        x: 18; y: (win.bare ? 0 : win.titleH) + 14 + (editor.active && win.chromeShown ? 44 : 0)   // under the tool card
         z: 6
         width: win.width - 36
         wrapMode: Text.WordWrap
@@ -460,7 +531,7 @@ Window {
         // in the picture's upper left corner (the window's, while the picture is not known)
         readonly property int inset: Theme.tier === 2 ? 16 : 8
         x: (noteLayer.visible ? noteLayer.x : 0) + inset
-        y: (noteLayer.visible ? noteLayer.y : win.fs ? 0 : win.titleH) + inset
+        y: (noteLayer.visible ? noteLayer.y : win.bare ? 0 : win.titleH) + inset
         tool: win.drawTool
         ink: win.drawInk
         onToolPicked: (t) => win.drawTool = t
@@ -475,7 +546,7 @@ Window {
         id: techOsd
         objectName: "techOsd"
         visible: false
-        x: 14; y: (win.fs ? 0 : win.titleH) + 48
+        x: 14; y: (win.bare ? 0 : win.titleH) + 48
         width: techText.implicitWidth + 20; height: techText.implicitHeight + 14
         radius: 8; color: Qt.rgba(0, 0, 0, .6)
         Text {
@@ -507,9 +578,6 @@ Window {
         Row {
             anchors { left: parent.left; leftMargin: 6; verticalCenter: parent.verticalCenter }
             spacing: 2
-            IconButton { objectName: "keyAbout"; glyph: Theme.icInfo; tip: L.t.about; latched: aboutPanel.visible
-                         dot: updater.state === "available"
-                         onClicked: aboutPanel.visible ? aboutPanel.close() : aboutPanel.open() }
             IconButton { id: clockKey; objectName: "keyScheduler"; glyph: Theme.icClock; latched: scheduler.when !== ""
                          tip: scheduler.when !== "" ? scheduler.summary : L.t.t_scheduler
                          onClicked: win.openSchedMenu()
@@ -521,10 +589,15 @@ Window {
                 objectName: "editBadge"
                 visible: editor.active
                 anchors.verticalCenter: parent.verticalCenter
-                width: badgeText.implicitWidth + 14; height: 18; radius: 4
-                color: Theme.acc
-                Text { id: badgeText; anchors.centerIn: parent; text: L.t.edit_caps; color: Theme.inkOnAcc
+                width: badgeText.implicitWidth + 30; height: 18; radius: 4
+                color: badgeArea.containsMouse ? Theme.accHi : Theme.acc
+                Text { id: badgeText; x: 7; anchors.verticalCenter: parent.verticalCenter; text: L.t.edit_caps; color: Theme.inkOnAcc
                        font.family: Theme.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 1.4 }
+                // where the mode is named, it is left: a click on the badge closes the editor
+                Icon { anchors { right: parent.right; rightMargin: 5; verticalCenter: parent.verticalCenter }
+                       name: Theme.icClose; size: 11; stroke: 2.2; color: Theme.inkOnAcc }
+                MouseArea { id: badgeArea; anchors.fill: parent; hoverEnabled: true; onClicked: editor.close() }
+                Tip { text: L.t.es_close_tip; shown: badgeArea.containsMouse; under: true }
             }
         }
         Text {
@@ -600,7 +673,6 @@ Window {
             elsewhere: editor.active && win.playingPath !== "" ? editor.elsewhere : []
             onElsewherePicked: (row) => editor.select(row)
             editing: editor.active
-            markIn: editor.active ? editor.markIn : -1
             fragSel: editor.selected
             fragInfo: editor.active ? editor.fragments : []
             fragFocus: win.area === "strip"
@@ -615,6 +687,7 @@ Window {
             onSeekTo: (s, final) => player.scrub(s, final)
             skips: autoskip.bands
             onMenuRequested: win.openSkipMenu()
+            onWheelStep: (a) => actions.run(a)
             BraunMenu { id: skipMenu; objectName: "skipMenu"; x: 40; y: -implicitHeight - 10; margins: 8 }
         }
 
@@ -632,46 +705,32 @@ Window {
             visible: !editor.active             // editing, the editor's own row stands here
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: win.edge; rightMargin: win.edge; bottomMargin: win.deckFoot }
             height: Theme.keyPlay
-
-            // a group's border: a hairline with equal room on each side
-            component Sep: Item {
-                width: [6, 10, 22][Theme.tier]; height: 24
-                anchors.verticalCenter: parent.verticalCenter
-                Rectangle { anchors.centerIn: parent; width: 1; height: parent.height; color: Theme.rule }
-                Rectangle { x: parent.width / 2 + 1; width: 1; height: parent.height
-                            color: Qt.rgba(1, 1, 1, Theme.light ? .6 : .03) }
-            }
+            // groups are set apart by air, not by rules (council 3): the transport on the left, the
+            // time in the middle, the navigation on the right
+            readonly property int groupGap: [12, 16, 22][Theme.tier]
 
             Row {
                 id: leftKeys
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: win.keyGap
-                KeyCap { objectName: "keyEject"; glyph: Theme.icEject; tip: L.t.t_open; anchors.verticalCenter: parent.verticalCenter
-                         onClicked: actions.run("open_file") }
-                // nothing loaded: mpv is not paused then, but the key offers to play (the list, or a file)
-                KeyCap { objectName: "keyPlay"; round: true; accent: true
+                // nothing loaded: mpv is not paused then, but the key offers to play (the list, or
+                // a file); the speed menu on its right button (the fast key is gone: Ctrl+X)
+                KeyCap { id: playKey; objectName: "keyPlay"; round: true; accent: true
                          width: Theme.keyPlay; height: Theme.keyPlay
                          glyph: player.paused || !player.hasFile ? Theme.icPlay : Theme.icPause
                          solid: true; glyphSize: Math.round(Theme.keyPlay * .4)
                          glyphShift: glyph === Theme.icPlay ? 1.5 : 0
-                         tip: player.paused || !player.hasFile ? L.t.t_play : L.t.t_pause
-                         onClicked: actions.run("play_pause") }
-                KeyCap { objectName: "keyFrame"; glyph: Theme.icFrame; tip: L.t.t_frame
-                         enabled: player.hasFile; anchors.verticalCenter: parent.verticalCenter
-                         onClicked: actions.run("frame_forward") }
-                KeyCap { id: ffKey; objectName: "keyFast"; enabled: player.hasFile
-                         glyph: Theme.icFastForward; latched: player.speed > 1.001
                          second: true; held: speedMenu.visible
-                         onRightClicked: win.openSpeedMenu()
-                         tip: (player.speed > 1.001 ? L.t.t_speed.arg(String(player.speed).replace(".", L.t.dec)) : L.t.t_fast)
-                              + L.t.t_speed_menu
-                         anchors.verticalCenter: parent.verticalCenter
-                         onClicked: actions.run("fast_play") }
-                Sep {}
-                // lit only while subtitles are on screen: mpv's sub-visibility is on even with no track
-                KeyCap { id: ccKey; objectName: "keySubs"; glyph: Theme.icCaptions; enabled: player.hasFile
+                         name: (player.paused || !player.hasFile ? L.t.t_play : L.t.t_pause).replace(/\s*\([^)]*\)/g, "")
+                         tip: (player.paused || !player.hasFile ? L.t.t_play : L.t.t_pause) + L.t.t_speed_menu
+                         onClicked: actions.run("play_pause")
+                         onRightClicked: if (player.hasFile) win.openSpeedMenu() }
+                Item { width: keys.groupGap - win.keyGap; height: 1 }
+                // only for a file that has subtitles (S, Shift+S and the picture's menu load them)
+                KeyCap { id: ccKey; objectName: "keySubs"; glyph: Theme.icCaptions
+                         visible: player.subTracks.length > 0
                          second: true; held: subsMenu.visible
-                         latched: player.hasFile && player.subVisible && player.sid !== false
+                         latched: player.subVisible && player.sid !== false
                          tip: L.t.t_subs
                          onRightClicked: win.openSubsMenu()
                          anchors.verticalCenter: parent.verticalCenter
@@ -682,7 +741,8 @@ Window {
                          glyph: player.muted ? Theme.icMute : Theme.icVolume; latched: player.muted
                          tip: (player.muted ? L.t.t_unmute : L.t.t_mute) + L.t.t_sound_menu
                          anchors.verticalCenter: parent.verticalCenter
-                         onClicked: actions.run("mute") }
+                         onClicked: actions.run("mute")
+                         WheelHandler { onWheel: (w) => actions.run(w.angleDelta.y > 0 ? "volume_up" : "volume_down") } }
                 // the concept's 6 px between the sound key and its slider, where the window has the room
                 Item { width: Theme.tier ? 6 : 0; height: 1 }
                 Rail {
@@ -698,29 +758,31 @@ Window {
                     Tip { text: Math.round(player.volume) + "%"; shown: volume.hovered || volume.dragging }
                     WheelHandler { onWheel: (w) => actions.run(w.angleDelta.y > 0 ? "volume_up" : "volume_down") }
                 }
-                Sep {}
+            }
+
+            // the time in the panel's middle, under the middle of the scale; the screenshot and the
+            // editor beside it. Pushed aside only where the transport would touch it.
+            Row {
+                id: midKeys
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: win.keyGap
+                x: Math.max(leftKeys.width + keys.groupGap,
+                            Math.min((keys.width - lcdTime.width) / 2, keys.width - rightKeys.width - keys.groupGap - width))
                 LcdTime {
+                    id: lcdTime
                     objectName: "lcdTime"
                     anchors.verticalCenter: parent.verticalCenter
                     position: player.position
                     duration: player.duration
+                    speed: player.hasFile ? player.speed : 1
+                    onSpeedReset: player.setSpeed(1)
                 }
-                Sep {}
+                Item { width: keys.groupGap - win.keyGap; height: 1 }
                 KeyCap { objectName: "keyShot"; glyph: Theme.icCamera; tip: L.t.t_shot
                          second: true
                          enabled: player.hasFile; anchors.verticalCenter: parent.verticalCenter
                          onClicked: actions.run("screenshot")
                          onRightClicked: actions.run("screenshot_clipboard") }
-                KeyCap { id: videoKey; objectName: "keyVideo"; glyph: Theme.icVideo; latched: videoPanel.visible
-                         enabled: player.hasFile || videoPanel.visible
-                         tip: L.t.t_video
-                         anchors.verticalCenter: parent.verticalCenter
-                         onClicked: actions.run("video_panel")
-                         onRightClicked: actions.run("video_panel")
-                         // over the deck, not over its scale: from the key's top up past the scale
-                         VideoPanel { id: videoPanel; objectName: "videoPanel"; margins: 8
-                                      y: -height - (win.panelH - win.deckFoot - Theme.keyPlay + (Theme.keyPlay - Theme.keyH) / 2) - 8
-                                      x: -width / 2 + parent.width / 2 } }
                 KeyCap { objectName: "keyEdit"; glyph: Theme.icCut; latched: editor.active
                          enabled: player.hasFile || editor.active
                          tip: L.t.t_edit
@@ -728,38 +790,43 @@ Window {
                          onClicked: actions.run("edit_mode") }
             }
 
-            // Settings stand a group's 18 px apart from the navigation when the window has the
-            // room; in a narrow one (760 px) the gap would push them onto the editing key
-            readonly property real navFree: width - leftKeys.width
-                                            - (settingsKey.width + prevKey.width + listKey.width + nextKey.width + 18 + 2 * win.keyGap)
             Row {
+                id: rightKeys
                 anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                 spacing: win.keyGap
                 KeyCap { id: settingsKey; objectName: "keySettings"; glyph: Theme.icSettings; tip: L.t.t_settings
                          latched: settingsPanel.visible
                          anchors.verticalCenter: parent.verticalCenter
                          onClicked: actions.run("settings") }
-                Sep { visible: keys.navFree >= 30 }
+                Item { width: keys.groupGap - win.keyGap; height: 1 }
+                // previous and next: only with more than one file in the list (PageUp, PageDown, the
+                // media keys and the mouse's side buttons do it always)
                 KeyCap { id: prevKey; objectName: "keyPrev"; glyph: Theme.icPrev; tip: L.t.t_prev
-                         enabled: playlist.count > 0; anchors.verticalCenter: parent.verticalCenter
+                         visible: playlist.count > 1; anchors.verticalCenter: parent.verticalCenter
                          onClicked: actions.run("prev") }
                 // the list open: the round key stays pressed in, its sign in the accent (the concept)
                 KeyCap { id: listKey; objectName: "keyPlaylist"; round: true; glyph: Theme.icList; latched: win.playlistShown
                          chosen: win.playlistShown
                          tip: L.t.t_playlist; onClicked: actions.run("playlist") }
                 KeyCap { id: nextKey; objectName: "keyNext"; glyph: Theme.icNext; tip: L.t.t_next
-                         enabled: playlist.count > 0; anchors.verticalCenter: parent.verticalCenter
+                         visible: playlist.count > 1; anchors.verticalCenter: parent.verticalCenter
                          onClicked: actions.run("next") }
             }
         }
     }
 
-    BraunMenu { id: subsMenu; objectName: "subsMenu"; parent: ccKey; y: -implicitHeight - 12; margins: 8 }
-    BraunMenu { id: speedMenu; objectName: "speedMenu"; parent: ffKey; y: -implicitHeight - 12; margins: 8 }
-    BraunMenu { id: audioMenu; objectName: "audioMenu"; parent: soundKey; y: -implicitHeight - 12; margins: 8 }
+    BraunMenu { id: subsMenu; objectName: "subsMenu"; margins: 8 }
+    BraunMenu { id: speedMenu; objectName: "speedMenu"; margins: 8 }
+    BraunMenu { id: audioMenu; objectName: "audioMenu"; margins: 8 }
+    // the picture's right button: everything that left the panel, within one click
+    BraunMenu { id: pictureMenu; objectName: "pictureMenu"; margins: 8 }
+    // the picture card stands over the deck in the window's middle (its key left the panel:
+    // Shift+V and the picture's menu open it)
+    VideoPanel { id: videoPanel; objectName: "videoPanel"; parent: Overlay.overlay; margins: 8
+                 x: (win.width - width) / 2
+                 y: win.height - (win.bare ? 0 : win.panelH) - height - 12 }
     InfoPanel { id: infoPanel; objectName: "infoPanel"; parent: Overlay.overlay }
     SettingsPanel { id: settingsPanel; objectName: "settingsPanel"; parent: Overlay.overlay }
-    AboutPanel { id: aboutPanel; objectName: "aboutPanel"; parent: Overlay.overlay }
 
     // sleep or shutdown is coming (scheduler, or the setting for the end of the list):
     // the time left, and the way out (the button or Esc)
@@ -769,7 +836,7 @@ Window {
         visible: scheduler.countdown > 0
         z: 10
         anchors.horizontalCenter: videoArea.horizontalCenter
-        y: (win.fs ? 0 : win.titleH) + 54
+        y: (win.bare ? 0 : win.titleH) + 54
         width: bannerRow.implicitWidth + 32; height: 52; radius: 12
         color: Theme.card; border.color: Theme.acc
         Rectangle { anchors.fill: parent; anchors.margins: -1; z: -1; radius: 13; color: Qt.rgba(0, 0, 0, .35) }

@@ -6,14 +6,17 @@ import QtQuick.Controls
 Popup {
     id: vp
     padding: 14
-    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     background: FloatCard {}
 
     component Caption: Text {
         color: Theme.tx3; font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: 2
     }
+    // `prop`, not `name`: inside the Rail a bare `name` is the Rail's own (what a screen reader
+    // calls it, empty), so the sliders read and set nothing
     component ColorRow: Item {
-        property string name
+        id: row
+        property string prop
         property string label
         width: 300; height: 26
         Text { anchors.verticalCenter: parent.verticalCenter; text: label; width: 96
@@ -21,11 +24,14 @@ Popup {
         Rail {
             x: 100; width: 156; height: 16; grooveHeight: 5
             anchors.verticalCenter: parent.verticalCenter
-            value: (player[name] + 100) / 200
-            onMoved: (v) => player.setColor(name, Math.round(v * 200 - 100))
+            objectName: "rail_" + row.prop
+            name: row.label
+            valueText: String(player[row.prop])
+            value: (player[row.prop] + 100) / 200
+            onMoved: (v) => player.setColor(row.prop, Math.round(v * 200 - 100))
         }
         Text { anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-               text: (player[name] > 0 ? "+" : "") + player[name]
+               text: (player[row.prop] > 0 ? "+" : "") + player[row.prop]
                color: Theme.tx; font.family: Theme.uiFont; font.pixelSize: 11 }
     }
 
@@ -41,9 +47,9 @@ Popup {
                 MouseArea { id: resetArea; anchors.fill: parent; hoverEnabled: true; onClicked: player.resetColors() }
             }
         }
-        ColorRow { name: "brightness"; label: L.t.brightness }
-        ColorRow { name: "contrast"; label: L.t.contrast }
-        ColorRow { name: "saturation"; label: L.t.saturation }
+        ColorRow { prop: "brightness"; label: L.t.brightness }
+        ColorRow { prop: "contrast"; label: L.t.contrast }
+        ColorRow { prop: "saturation"; label: L.t.saturation }
 
         Item { width: 1; height: 4 }
         Caption { text: L.t.aspect_caps }

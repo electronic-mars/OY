@@ -35,7 +35,6 @@ Item {
     readonly property int barH: Theme.tier === 2 ? 16 : 14
     readonly property int clipH: Theme.tier === 2 ? 32 : 30
     readonly property int laneRows: noteLane && notes.length ? layout.count : 0
-    property real markIn: -1        // editor: the pending start mark
     property bool editing: false    // the editor is open
     // editor: the stretches of this file that stay out of the saved file (veiled on the groove)
     readonly property var outside: {
@@ -59,6 +58,24 @@ Item {
     signal notePicked(int i)
     signal noteRanges(var ranges)   // [[i, a, b], …]: a drag let go (with Shift, a few drawings)
     signal menuRequested()          // right button: marking the opening and the credits
+    signal wheelStep(string action) // the wheel over the scale: the arrows' commands
+
+    // The wheel over the scale does what the arrows do (council 3): plain 5 s, Shift 30 s,
+    // Ctrl a frame; up is forward. A touchpad's small steps add up to one notch (120) each;
+    // Qt may turn Shift+wheel into a sideways scroll, so x counts when y is 0.
+    WheelHandler {
+        property real acc: 0
+        acceptedModifiers: Qt.KeyboardModifierMask
+        onWheel: (w) => {
+            acc += w.angleDelta.y !== 0 ? w.angleDelta.y : w.angleDelta.x
+            var kind = (w.modifiers & Qt.ControlModifier) ? "frame" : (w.modifiers & Qt.ShiftModifier) ? "jump" : "seek"
+            while (Math.abs(acc) >= 120) {
+                var fwd = acc > 0
+                acc -= fwd ? 120 : -120
+                tl.wheelStep(kind + (fwd ? "_forward" : "_backward"))
+            }
+        }
+    }
 
     // under everything else, so it only gets the right button (the rail takes the left)
     MouseArea {
@@ -533,30 +550,6 @@ Item {
         visible: tl.editing && tl.fragFocus
         x: -3; y: rail.y - 3; width: rail.width + 6; height: rail.height + 6
         radius: 9; color: "transparent"; border.width: 2; border.color: Theme.acc
-    }
-    // editor: no start mark yet, so a fragment begins at the file's start: a pale dashed I there
-    Item {
-        id: markGhost
-        objectName: "markGhost"
-        readonly property string tip: L.t.tl_no_in
-        visible: tl.editing && tl.markIn < 0 && tl.duration > 0
-        x: 0; y: rail.y - 3; width: 10; height: rail.height + 5
-        Column {
-            spacing: 2
-            Repeater { model: 5; Rectangle { width: 2; height: 2; color: Theme.tx3 } }
-        }
-        Text { x: 3; y: -6; text: "I"; color: Theme.tx3
-               font.family: Theme.uiFont; font.pixelSize: 9; font.weight: Font.Bold }
-        HoverHandler { id: ghostHover }
-        Tip { text: markGhost.tip; shown: ghostHover.hovered }
-    }
-    Item {
-        visible: tl.markIn >= 0 && tl.duration > 0
-        x: tl.markIn / tl.duration * rail.width
-        y: rail.y - 3
-        Rectangle { x: -1; width: 2; height: rail.height + 5; color: Theme.acc }
-        Text { x: 3; y: -6; text: "I"; color: Theme.accText
-               font.family: Theme.uiFont; font.pixelSize: 9; font.weight: Font.Bold }
     }
     // editor: when each drawing is on screen, a bar on its track in the drawing's own ink, with
     // its times (a text's words first); the chosen one ringed in white. Drag a bar to move it in

@@ -11,6 +11,9 @@ Rectangle {
     property real duration: 0
     property bool remaining: false
     property bool fine: false           // the editor's: the position to the hundredth, no length
+    property real speed: 1              // not 1: «×1,5» after the length; a click on it goes back to 1×
+    signal speedReset()
+    readonly property bool fast: Math.abs(speed - 1) > 0.001 && !fine
     readonly property string tip: L.t.lcd_tip
 
     readonly property bool hours: duration >= 3600
@@ -110,9 +113,25 @@ Rectangle {
         Segments { visible: !lcd.fine; anchors.bottom: parent.bottom; text: "/"; h: lcd.small }
         Segments { objectName: "lcdTotal"; visible: !lcd.fine; anchors.bottom: parent.bottom; text: lcd.total; h: lcd.small }
         Segments { visible: lcd.fine; anchors.bottom: parent.bottom; text: lcd.duration > 0 ? lcd.hundredths : ""; h: lcd.small }
+        Text {
+            id: speedMark
+            objectName: "lcdSpeed"
+            visible: lcd.fast
+            anchors.bottom: parent.bottom
+            text: "×" + String(Math.round(lcd.speed * 100) / 100).replace(".", L.t.dec)
+            color: Theme.lcdInk; font.family: Theme.monoFont; font.pixelSize: lcd.small; font.weight: Font.DemiBold
+        }
     }
     MouseArea { id: lcdArea; anchors.fill: parent; hoverEnabled: true; onClicked: lcd.remaining = !lcd.remaining }
-    Tip { text: lcd.tip; shown: lcdArea.containsMouse && !lcdArea.pressed }
+    MouseArea {
+        id: speedArea
+        visible: lcd.fast
+        x: figures.x + speedMark.x - 4; y: 0; width: speedMark.width + 8; height: parent.height
+        hoverEnabled: true
+        onClicked: lcd.speedReset()
+    }
+    Tip { text: lcd.tip; shown: lcdArea.containsMouse && !lcdArea.pressed && !speedArea.containsMouse }
+    Tip { text: L.t.t_speed_reset; shown: speedArea.containsMouse && !speedArea.pressed }
     Accessible.role: Accessible.StaticText
     Accessible.name: (lcd.remaining ? L.t.lcd_remaining : L.t.lcd_elapsed).arg(lcd.now).arg(lcd.total)
 }

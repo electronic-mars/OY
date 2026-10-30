@@ -1,7 +1,7 @@
 import QtQuick
 
 // A rubber key cap: light along its top, a soft shadow under it; travels down 1px when pressed.
-// `latched` keys stand as the others and light a lamp in their corner (subtitles on, sound off…).
+// `latched` keys stand as the others with their sign in the accent (subtitles on, sound off…).
 // `accent` is the one coloured key on the panel, as on a Braun calculator.
 // The sign is a Lucide icon by name (icons.py), drawn for the screen's own pixels.
 Item {
@@ -39,8 +39,8 @@ Item {
 
     readonly property bool down: area.pressed || held || chosen
     // one colour, one meaning: the accent is the play key and the position; a key that is on
-    // keeps its sign and lights a lamp in its corner
-    readonly property color ink: accent ? Theme.inkOnAcc : chosen ? Theme.accText : Theme.glyph
+    // (latched) or the tool in use (chosen) shows its sign in the accent, no lamp beside it
+    readonly property color ink: accent ? Theme.inkOnAcc : chosen || latched ? Theme.accText : Theme.glyph
 
     readonly property real r: round ? width / 2 : Theme.keyRadius
     readonly property bool raised: !flat && !down
@@ -69,11 +69,19 @@ Item {
         radius: key.r
         color: key.accent ? Qt.tint(Theme.accTop, Qt.rgba(1, 1, 1, .3)) : Qt.tint(Theme.capTop, Qt.rgba(1, 1, 1, Theme.light ? .9 : .1))
     }
+    // pressed in: the cap sinks into a dark well of its own outline, so the key keeps its whole
+    // shape (a cap moved down over nothing read as a key cut off along its top)
+    Rectangle {
+        visible: key.down && !key.flat
+        anchors.fill: parent; anchors.bottomMargin: -1
+        radius: key.r
+        color: key.accent ? Qt.rgba(0, 0, 0, .45) : Theme.capShadow
+    }
     Rectangle {
         id: cap
         anchors.fill: parent
         anchors.topMargin: key.flat ? 0 : key.down ? 2 : 1
-        anchors.bottomMargin: key.flat ? 0 : key.down ? -2 : -1
+        anchors.bottomMargin: key.flat ? 0 : -1
         radius: key.r
         border.width: key.flat ? 1 : 0
         border.color: area.containsMouse || area.pressed || key.held ? Theme.line : "transparent"
@@ -92,32 +100,6 @@ Item {
             GradientStop { position: 1; color: key.accent ? Theme.accDeep
                                                   : key.down ? Theme.capDnBot
                                                   : area.containsMouse ? Theme.capHiBot : Theme.capBot }
-        }
-        // pressed in: shade along the inside of the top edge (CSS inset 0 1px 3px)
-        Rectangle {
-            visible: key.down && !key.flat
-            anchors.fill: parent
-            radius: parent.radius
-            gradient: Gradient {
-                GradientStop { position: 0; color: Qt.rgba(0, 0, 0, Theme.light ? .14 : .3) }
-                GradientStop { position: Math.min(1, 4 / Math.max(1, cap.height)); color: "transparent" }
-            }
-        }
-
-        // the lamp: a 4 px dot of the accent in the upper right corner of a key that is on
-        Rectangle {
-            visible: lamp.visible
-            x: lamp.x - 2; y: lamp.y - 2; width: 8; height: 8; radius: 4
-            color: Theme.accA(.3)
-        }
-        Rectangle {
-            id: lamp
-            objectName: "lamp"
-            visible: key.latched && !key.accent
-            width: 4; height: 4; radius: 2
-            x: key.round ? parent.width / 2 + 9 : parent.width - 9
-            y: key.round ? 8 : 5
-            color: Theme.acc
         }
         Row {
             id: captionRow

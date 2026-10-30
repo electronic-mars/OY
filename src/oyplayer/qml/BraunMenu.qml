@@ -8,6 +8,7 @@ Popup {
     property var items: []
     property int current: -1        // the highlighted row: under the pointer, or moved to by the keys
     padding: 5
+    property int rowWidth: 250
     onOpened: current = -1
 
     // ↑ ↓ Home End move the highlight past headers, separators and items that are off; Enter
@@ -30,11 +31,11 @@ Popup {
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     background: FloatCard {}
     contentItem: Column {
-        width: 250
+        width: menu.rowWidth
         Repeater {
             model: menu.items
             delegate: Item {
-                width: 250
+                width: menu.rowWidth
                 height: modelData.separator ? 9 : (modelData.header ? 24 : 28)
                 Accessible.role: modelData.separator ? Accessible.Separator : modelData.header ? Accessible.StaticText : Accessible.MenuItem
                 Accessible.name: modelData.text || ""
@@ -55,10 +56,10 @@ Popup {
                     anchors.fill: parent
                     radius: 6
                     color: index === menu.current && itemArea.enabled ? Theme.panelHi : "transparent"
-                    Rectangle {   // LED dot for the chosen option
+                    Icon {   // a tick for the chosen option
                         visible: modelData.checked === true
-                        x: 10; anchors.verticalCenter: parent.verticalCenter
-                        width: 6; height: 6; radius: 3; color: Theme.acc
+                        x: 7; anchors.verticalCenter: parent.verticalCenter
+                        name: "check"; size: 12; stroke: 2.2; color: Theme.accText
                     }
                     Text {
                         x: 24; width: parent.width - 32

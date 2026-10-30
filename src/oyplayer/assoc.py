@@ -15,10 +15,12 @@ from pathlib import Path
 from .i18n import tr
 from .log import log
 from .playlist import MEDIA_EXT
+from .series import VIDEO_EXT
 
 APP = "OY Player"
 MEDIA_ID, RADIO_ID = "OYPlayer.media", "OYPlayer.radio"
 EXTS = sorted(MEDIA_EXT) + [".lau"]
+VIDEO = sorted(VIDEO_EXT & MEDIA_EXT) + [".lau"]
 # Where it all goes; the self-test points these at a scratch key it deletes afterwards.
 CLASSES = r"Software\Classes"
 APP_KEY = r"Software\OYPlayer"
@@ -68,7 +70,11 @@ def _delete_value(path, name):
         pass
 
 
-def register(notify=True):
+def register(notify=True, audio=False):
+    """Video files and radio stations always, sound files only with `audio`. Registering again
+    first takes away what an earlier choice offered."""
+    unregister(notify=False)
+    exts = EXTS if audio else VIDEO
     cmd = command()
     for pid, text in ((MEDIA_ID, tr("assoc_media")), (RADIO_ID, tr("assoc_radio"))):
         _set(rf"{CLASSES}\{pid}", {"": text})
@@ -77,14 +83,14 @@ def register(notify=True):
             _set(rf"{CLASSES}\{pid}\DefaultIcon", {"": icon()})
     caps = rf"{APP_KEY}\Capabilities"
     _set(caps, {"ApplicationName": APP, "ApplicationDescription": tr("assoc_desc")})
-    _set(rf"{caps}\FileAssociations", {e: RADIO_ID if e == ".lau" else MEDIA_ID for e in EXTS})
-    for e in EXTS:
+    _set(rf"{caps}\FileAssociations", {e: RADIO_ID if e == ".lau" else MEDIA_ID for e in exts})
+    for e in exts:
         _set(rf"{CLASSES}\{e}\OpenWithProgids", {RADIO_ID if e == ".lau" else MEDIA_ID: ""})
     _set(REGISTERED, {APP: caps})
     if getattr(sys, "frozen", False):
         exe = rf"{CLASSES}\Applications\{Path(sys.executable).name}"
         _set(rf"{exe}\shell\open\command", {"": cmd})
-        _set(rf"{exe}\SupportedTypes", {e: "" for e in EXTS})
+        _set(rf"{exe}\SupportedTypes", {e: "" for e in exts})
     log.info("file types registered for %s", cmd)
     if notify:
         ctypes.windll.shell32.SHChangeNotify(0x08000000, 0, None, None)    # SHCNE_ASSOCCHANGED

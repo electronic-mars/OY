@@ -54,7 +54,7 @@ Rectangle {
 
     Rectangle { anchors { left: parent.left; top: parent.top; bottom: parent.bottom } width: 1; color: Theme.lineHi }
 
-    // header: the three pages as small-caps tabs, the chosen one lit with an orange dot
+    // header: the three pages as small-caps tabs, the chosen one raised, its name in the accent
     Item {
         id: head
         anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 10; rightMargin: 12 }
@@ -70,10 +70,8 @@ Rectangle {
                     readonly property bool on: pl.tab === index
                     color: on ? Theme.panelHi : "transparent"
                     border.color: on ? Theme.lineHi : "transparent"
-                    Rectangle { visible: parent.on; x: 6; anchors.verticalCenter: parent.verticalCenter
-                                width: 4; height: 4; radius: 2; color: Theme.acc }
-                    Text { id: tabText; x: 14; anchors.verticalCenter: parent.verticalCenter; text: modelData
-                           color: parent.on ? Theme.tx : Theme.tx3
+                    Text { id: tabText; anchors.centerIn: parent; text: modelData
+                           color: parent.on ? Theme.accText : Theme.tx3
                            font.family: Theme.uiFont; font.pixelSize: 10; font.letterSpacing: 1.8 }
                     MouseArea { anchors.fill: parent; onClicked: pl.tab = index }
                 }
@@ -145,7 +143,7 @@ Rectangle {
                 Rectangle {   // the file's frame; a sunk tile until it comes (or for sound)
                     id: thumbTile
                     anchors { left: num.right; leftMargin: 10; verticalCenter: parent.verticalCenter }
-                    width: 56; height: 32; radius: 4
+                    width: 56; height: 32; radius: 6
                     color: Theme.sunk
                     Image {
                         objectName: "plThumb"

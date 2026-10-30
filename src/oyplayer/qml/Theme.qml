@@ -127,8 +127,6 @@ QtObject {
     readonly property string icPinned: "pin"
     // the editor
     readonly property string icCut: "scissors"
-    readonly property string icWhole: "scan"
-    readonly property string icPreview: "eye"
     readonly property string icSave: "save"
     readonly property string icCancel: "x"
     readonly property string icFolder: "folder-open"

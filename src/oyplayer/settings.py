@@ -29,6 +29,7 @@ DEFAULTS = {
     "fitWindow": True,
     "singleInstance": True,
     "tray": "off",               # off | on | minimize
+    "assocAudio": False,         # offered to Windows for sound files too, not only video
     "globalMedia": False,        # media keys reach the player from any program
     "updateCheck": True,         # once a day ask the release page whether a newer version is out
     # Radio
@@ -49,7 +50,10 @@ DEFAULTS = {
     "subFolders": "subs;Subs;subtitles",
     # Controls
     "wheel": "volume",           # volume | seek
+    "leftClick": "chrome",       # chrome (hide or show the panels) | pause | none
+    "middleClick": "fullscreen",  # fullscreen | pause | chrome | none
     "doubleClick": "fullscreen",  # fullscreen | pause | none
+    "sideButtons": "seek",       # the mouse's back/forward buttons: seek | track (previous/next) | none
     "preview": True,             # frame over the seek bar under the pointer
     "seekStep": 5,
     "jumpStep": 30,

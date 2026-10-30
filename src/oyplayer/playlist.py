@@ -18,7 +18,7 @@ from urllib.parse import unquote, urlparse
 
 from PySide6.QtCore import (Property, QAbstractListModel, QModelIndex, Qt, QTimer, QUrl, Signal,
                             Slot)
-from PySide6.QtGui import QImage, QPainter, QPainterPath
+from PySide6.QtGui import QBrush, QImage, QPainter, QPainterPath
 
 from .i18n import tr
 from .log import home, log, write_later
@@ -85,7 +85,7 @@ def make_thumb(path, dur):
     if not _FFMPEG or "://" in path or not f.is_file():
         return ""
     st = f.stat()
-    out = home() / "thumbs" / (hashlib.sha1(f"{path}|{st.st_size}|{st.st_mtime_ns}".encode()).hexdigest()[:20] + ".png")
+    out = home() / "thumbs" / (hashlib.sha1(f"r2|{path}|{st.st_size}|{st.st_mtime_ns}".encode()).hexdigest()[:20] + ".png")
     if not out.is_file():
         out.parent.mkdir(parents=True, exist_ok=True)
         frame = out.with_suffix(".bmp")
@@ -103,10 +103,10 @@ def make_thumb(path, dur):
         rounded.fill(Qt.GlobalColor.transparent)
         p = QPainter(rounded)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        clip = QPainterPath()
-        clip.addRoundedRect(0, 0, img.width(), img.height(), 9, 9)      # 4 px at the row's 56 px
-        p.setClipPath(clip)
-        p.drawImage(0, 0, img)
+        # the corners filled with the frame as a brush: smooth, where a clip path is cut by pixels
+        shape = QPainterPath()
+        shape.addRoundedRect(0, 0, img.width(), img.height(), 14, 14)    # 6 px at the row's 56 px
+        p.fillPath(shape, QBrush(img))
         p.end()
         rounded.save(str(out))
     return QUrl.fromLocalFile(str(out)).toString() if out.is_file() else ""

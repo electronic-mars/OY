@@ -5,6 +5,34 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 
 ## [Unreleased]
 
+### Fixed
+- The picture card's brightness, contrast and saturation sliders set nothing: each read its own empty name instead of the picture's setting.
+- A key pressed in (the open list, a key held down) looked cut off along its top; it now sinks into its own outline.
+
+### Changed
+- Keys that are on show their sign in the accent instead of a lamp dot; the playlist tabs and menus lost their dots too (menus mark the choice with a tick).
+- Text is drawn with Windows' own hinting: sharper at small sizes.
+- The playlist's frames have rounder, smooth corners.
+- Settings: the language is a list (Windows' own, or each language by its name); the close key is in the upper right corner beside the section's name; «Defaults» puts the open section back (a second press confirms); About moved from the title bar into the settings as their last section, lit while an update waits.
+- Settings › Window › Default player: video files, and with «Sound files too» music as well.
+- The mouse: a click on the picture hides the panels (or pauses, as set), the middle button goes full screen, the back and forward buttons seek (or change the file); all in Settings › Controls.
+- The editor's cut key shows scissors; «Cancel» is now «Close», with a cross.
+
+### Panel (UI/UX council)
+- Fewer keys: Open, Next frame, Fast forward and Video properties left the panel. Play opens a file when nothing is loaded and opens the speed menu on its right button; a click on the empty window opens a file; Ctrl+→, Ctrl+X and Shift+V still work.
+- The subtitles key shows only for a file with subtitles; previous and next only with more than one file in the list.
+- A right click on the picture opens a menu: open, speed, subtitles, sound, video properties, screenshot, file information.
+- A speed other than 1× shows on the time display («×1,5»); a click on it goes back to 1×.
+- Groups are set apart by space instead of rules; the time display stands in the middle of the panel.
+- The wheel over the seek bar works as the arrows: 5 s, with Shift 30 s, with Ctrl one frame.
+
+### Editor (UI/UX council)
+- A new model: the edit holds the whole file from the start. I cuts off what is before here, O what is after, the scissors split the piece, Delete takes the chosen piece out. Pressing again only moves the border. The keys read as a ruler: |← ✂ →| and a bin (right click: start over).
+- Without loss, a border moves to the keyframe before it as soon as that is known, and the cursor with it: what the timeline shows is what gets saved.
+- «Result» plays the finished video from its start, with a bar of where in it you are; a click on the bar goes there.
+- Drawing pauses the video; a new drawing on a frame that already shows drawings comes and goes together with them, so two arrows in a row stay together. Esc first puts the drawing tool down.
+- The «EDITING» badge in the title bar closes the editor; Save stays off until something was cut or drawn.
+
 ## [0.11.1] - 2026-10-29
 
 ### Updates

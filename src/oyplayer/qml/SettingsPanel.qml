@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
 
-// Settings: six sections instead of fifteen pages. Each row is a name, one sentence
+// Settings: six sections instead of fifteen pages, and About. Each row is a name, one sentence
 // and one control (MAS). Changes apply at once; there is no OK/Apply.
 Popup {
     id: sp
@@ -19,7 +19,18 @@ Popup {
     readonly property var sections: [
         { title: L.t.p_playback, icon: Theme.icPlay }, { title: L.t.p_window, icon: Theme.icWindow },
         { title: L.t.p_sound, icon: Theme.icVolume }, { title: L.t.p_subs, icon: Theme.icCaptions },
-        { title: L.t.p_controls, icon: Theme.icKeyboard }, { title: L.t.p_shots, icon: Theme.icCamera }]
+        { title: L.t.p_controls, icon: Theme.icKeyboard }, { title: L.t.p_shots, icon: Theme.icCamera },
+        { title: L.t.about, icon: Theme.icInfo }]
+    // what «Defaults» puts back in each section (the language, the key list and the file types
+    // in Windows are left as they are: each has its own way back)
+    readonly property var sectionKeys: [
+        ["resume", "fileMemory", "openAdds", "series", "autoskip", "onListEnd", "history", "hwdec"],
+        ["theme", "accent", "onTop", "fitWindow", "singleInstance", "updateCheck", "tray"],
+        ["audioDevice", "channels", "passthrough", "audioMode", "maxVolume", "audioLang", "radioDir", "radioRecDir"],
+        ["subsOn", "subScale", "subLang", "subFolders"],
+        ["wheel", "leftClick", "middleClick", "doubleClick", "sideButtons", "preview", "globalMedia", "seekStep", "jumpStep"],
+        ["shotFormat", "shotQuality", "shotDir", "exportCodec", "mpvOptions"],
+        []]
 
     component Card: Rectangle {
         default property alias rows: col.data
@@ -55,8 +66,9 @@ Popup {
                             readonly property bool on: sp.section === index
                             color: on ? Theme.panelHi : "transparent"
                             border.color: on ? Theme.lineHi : "transparent"
+                            // About in the accent while a newer version waits
                             Icon { x: 12; anchors.verticalCenter: parent.verticalCenter; name: modelData.icon
-                                   size: 16; color: parent.on ? Theme.accText : Theme.tx3 }
+                                   size: 16; color: parent.on || (index === 6 && updater.state === "available") ? Theme.accText : Theme.tx3 }
                             Text { x: 38; anchors.verticalCenter: parent.verticalCenter; text: modelData.title
                                    font.family: Theme.uiFont; font.pixelSize: 13; color: parent.on ? Theme.tx : Theme.tx2 }
                             MouseArea { anchors.fill: parent; onClicked: { actions.stopCapture(); sp.section = index; flick.contentY = 0 } }
@@ -64,8 +76,54 @@ Popup {
                     }
                 }
             }
-            IconButton { x: 12; anchors.bottom: parent.bottom; anchors.bottomMargin: 12; glyph: Theme.icClose
-                         tip: L.t.t_close; onClicked: sp.close() }
+            // the section back to its defaults: a second press within three seconds does it
+            Rectangle {
+                id: resetKey
+                objectName: "resetSection"
+                property bool armed: false
+                visible: sp.sectionKeys[sp.section].length > 0
+                x: 12; anchors.bottom: parent.bottom; anchors.bottomMargin: 12
+                width: resetRow.implicitWidth + 20; height: 28; radius: 7
+                color: resetArea.containsMouse ? Theme.card : "transparent"
+                border.color: armed ? Theme.accA(.6) : resetArea.containsMouse ? Theme.line : "transparent"
+                Row {
+                    id: resetRow
+                    anchors.centerIn: parent
+                    spacing: 6
+                    Icon { anchors.verticalCenter: parent.verticalCenter; name: Theme.icRotateLeft; size: 13
+                           color: resetKey.armed ? Theme.accText : Theme.tx3 }
+                    Text { anchors.verticalCenter: parent.verticalCenter
+                           text: resetKey.armed ? L.t.reset_again : L.t.reset_section
+                           color: resetKey.armed ? Theme.accText : resetArea.containsMouse ? Theme.tx : Theme.tx2
+                           font.family: Theme.uiFont; font.pixelSize: 12 }
+                }
+                MouseArea {
+                    id: resetArea; anchors.fill: parent; hoverEnabled: true
+                    onClicked: {
+                        if (!resetKey.armed) { resetKey.armed = true; disarm.restart(); return }
+                        resetKey.armed = false
+                        sp.sectionKeys[sp.section].forEach(k => settings.reset(k))
+                    }
+                }
+                Timer { id: disarm; interval: 3000; onTriggered: resetKey.armed = false }
+                Connections { target: sp; function onSectionChanged() { resetKey.armed = false } }
+                Tip { text: L.t.reset_section_tip; shown: resetArea.containsMouse && !resetKey.armed }
+            }
+        }
+
+        // ---- the section's name, and the way out in the corner, where a window has it
+        Text {
+            id: pageTitle
+            anchors { left: nav.right; leftMargin: 4; top: parent.top; topMargin: 15 }
+            text: sp.sections[sp.section].title
+            color: Theme.tx; font.family: Theme.uiFont; font.pixelSize: 16; font.weight: Font.DemiBold
+        }
+        IconButton {
+            objectName: "settingsClose"
+            anchors { right: parent.right; rightMargin: 10; top: parent.top; topMargin: 10 }
+            width: 32; height: 28
+            glyph: Theme.icClose
+            tip: L.t.t_close; onClicked: sp.close()
         }
 
         // ---- the section
@@ -73,7 +131,7 @@ Popup {
             id: flick
             objectName: "settingsFlick"
             anchors { left: nav.right; right: parent.right; top: parent.top; bottom: parent.bottom
-                      topMargin: 14; bottomMargin: 14; rightMargin: 14 }
+                      topMargin: 46; bottomMargin: 14; rightMargin: 14 }
             contentHeight: pages.height
             clip: true
             boundsBehavior: Flickable.StopAtBounds
@@ -82,7 +140,7 @@ Popup {
             Item {
                 id: pages
                 width: flick.width - 10
-                height: [p0, p1, p2, p3, p4, p5][sp.section].height
+                height: [p0, p1, p2, p3, p4, p5, p6][sp.section].height
 
                 // 1. Playback
                 Column {
@@ -139,9 +197,10 @@ Popup {
                     Caption { text: L.t.c_view }
                     Card {
                         SettingRow { title: L.t.s_lang; below: true; hint: ""
-                                     Segmented { objectName: "setLang"; width: 360; value: L.lang
-                                                 options: [{ value: "en", text: L.t.lang_en }, { value: "uk", text: L.t.lang_uk }]
-                                                 onPicked: (x) => settings.set("lang", x) } }
+                                     Choice { objectName: "setLang"; width: 260; value: sp.v.lang
+                                              options: [{ value: "", text: L.t.as_windows }].concat(
+                                                           i18n.languages.map(l => ({ value: l.code, text: l.name })))
+                                              onPicked: (x) => settings.set("lang", x) } }
                         SettingRow { title: L.t.s_theme; below: true; hint: ""
                                      Segmented { objectName: "setTheme"; width: 360; value: sp.v.theme
                                                  options: [{ value: "system", text: L.t.as_windows }, { value: "dark", text: L.t.o_dark }, { value: "light", text: L.t.o_light }]
@@ -171,15 +230,23 @@ Popup {
                                      Segmented { objectName: "setTray"; width: 400; value: sp.v.tray
                                                  options: [{ value: "off", text: L.t.o_no }, { value: "on", text: L.t.o_yes }, { value: "minimize", text: L.t.o_to_tray }]
                                                  onPicked: (x) => settings.set("tray", x) } }
+                    }
+                    Caption { text: L.t.c_default }
+                    Card {
                         SettingRow { title: L.t.s_types; below: true
                                      hint: app.fileTypes
                                            ? L.t.s_types_on_h
                                            : L.t.s_types_off_h
                                      Row { spacing: 8
                                            PillButton { objectName: "setAssocOn"; text: app.fileTypes ? L.t.b_windows_settings : L.t.b_offer
-                                                        accent: !app.fileTypes; onClicked: app.registerFileTypes() }
+                                                        accent: !app.fileTypes; onClicked: app.registerFileTypes(sp.v.assocAudio, true) }
                                            PillButton { objectName: "setAssocOff"; text: L.t.b_remove; visible: app.fileTypes
                                                         onClicked: app.unregisterFileTypes() } } }
+                        // offered already: the new choice reaches Windows at once
+                        SettingRow { title: L.t.s_assoc_audio; hint: L.t.s_assoc_audio_h
+                                     Toggle { objectName: "setAssocAudio"; checked: sp.v.assocAudio
+                                              onToggled: (on) => { settings.set("assocAudio", on)
+                                                                   if (app.fileTypes) app.registerFileTypes(on, false) } } }
                     }
                 }
 
@@ -272,15 +339,28 @@ Popup {
                     id: p4; visible: sp.section === 4; width: parent.width; spacing: 10
                     Caption { text: L.t.c_mouse }
                     Card {
+                        SettingRow { title: L.t.s_left; below: true; hint: L.t.s_left_h
+                                     Segmented { objectName: "setLeftClick"; width: 360; value: sp.v.leftClick
+                                                 options: [{ value: "chrome", text: L.t.o_chrome }, { value: "pause", text: L.t.o_pause }, { value: "none", text: L.t.o_nothing }]
+                                                 onPicked: (x) => settings.set("leftClick", x) } }
+                        SettingRow { title: L.t.s_double; below: true; hint: ""
+                                     Segmented { width: 360; value: sp.v.doubleClick
+                                                 options: [{ value: "fullscreen", text: L.t.act_fullscreen }, { value: "pause", text: L.t.o_pause }, { value: "none", text: L.t.o_nothing }]
+                                                 onPicked: (x) => settings.set("doubleClick", x) } }
+                        SettingRow { title: L.t.s_middle; below: true; hint: ""
+                                     Segmented { objectName: "setMiddleClick"; width: parent.width; value: sp.v.middleClick
+                                                 options: [{ value: "fullscreen", text: L.t.act_fullscreen }, { value: "chrome", text: L.t.o_chrome },
+                                                           { value: "pause", text: L.t.o_pause }, { value: "none", text: L.t.o_nothing }]
+                                                 onPicked: (x) => settings.set("middleClick", x) } }
+                        SettingRow { title: L.t.s_side; below: true; hint: L.t.s_side_h
+                                     Segmented { objectName: "setSideButtons"; width: 400; value: sp.v.sideButtons
+                                                 options: [{ value: "seek", text: L.t.o_seek }, { value: "track", text: L.t.o_track }, { value: "none", text: L.t.o_nothing }]
+                                                 onPicked: (x) => settings.set("sideButtons", x) } }
                         SettingRow { title: L.t.s_wheel; below: true
                                      hint: L.t.s_wheel_h
                                      Segmented { width: 300; value: sp.v.wheel
                                                  options: [{ value: "volume", text: L.t.volume }, { value: "seek", text: L.t.o_seek }]
                                                  onPicked: (x) => settings.set("wheel", x) } }
-                        SettingRow { title: L.t.s_double; below: true; hint: ""
-                                     Segmented { width: 360; value: sp.v.doubleClick
-                                                 options: [{ value: "fullscreen", text: L.t.act_fullscreen }, { value: "pause", text: L.t.o_pause }, { value: "none", text: L.t.o_nothing }]
-                                                 onPicked: (x) => settings.set("doubleClick", x) } }
                         SettingRow { title: L.t.s_preview
                                      hint: L.t.s_preview_h
                                      Toggle { objectName: "setPreview"; checked: sp.v.preview; onToggled: (on) => settings.set("preview", on) } }
@@ -400,6 +480,12 @@ Popup {
                                              placeholder: "deband=yes\nscale=ewa_lanczossharp"
                                              onCommitted: (t) => settings.set("mpvOptions", t) } }
                     }
+                }
+
+                // 7. About
+                Column {
+                    id: p6; visible: sp.section === 6; width: parent.width; spacing: 10
+                    Card { AboutPage { objectName: "aboutPage"; width: parent.width } }
                 }
             }
         }
