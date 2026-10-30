@@ -3,7 +3,7 @@
 All notable changes to OY Player. Versions follow [Semantic Versioning](https://semver.org/).
 Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitHub release of the same name.
 
-## [Unreleased]
+## [0.12.0] - 2026-10-30
 
 ### Fixed
 - The picture card's brightness, contrast and saturation sliders set nothing: each read its own empty name instead of the picture's setting.
@@ -39,7 +39,6 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 - A click on the picture pauses again by default (hiding the panels is a choice in Settings › Controls).
 - The middle button and a double click go full screen on the bare picture; the panels come back only when the pointer really moves.
 - The list holds only the file you opened, by default; Settings › Playback › The list › Every opened file keeps them all. The list has a Clear key (press twice; Shift+Delete at once).
-
 - No subtitles key on the panel: S turns them on and off, Alt+S and the picture's menu open their menu.
 - Menus have taller rows, a sign on the left and the matching key on the right.
 - One step between every two things on the panel.
