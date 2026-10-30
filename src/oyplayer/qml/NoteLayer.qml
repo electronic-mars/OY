@@ -64,6 +64,45 @@ Item {
     }
     function clamp(m) { return [Math.max(0, Math.min(1, m.x / width)), Math.max(0, Math.min(1, m.y / height))] }
 
+    // pictures (a logo) are images over the frame, under the drawn lines; the chosen one has a
+    // corner to size it by, its proportions kept
+    Repeater {
+        model: layer.shown.filter(n => n.kind === "image")
+        Image {
+            id: logoImg
+            objectName: "logo" + modelData.i
+            // not `layer`: inside a delegate that name is the Item's own «layer» group (no width),
+            // which wins over the root's id here
+            readonly property Item area: parent
+            readonly property var pts: modelData.pts
+            x: pts[0][0] * area.width; y: pts[0][1] * area.height
+            width: (pts[1][0] - pts[0][0]) * area.width; height: (pts[1][1] - pts[0][1]) * area.height
+            source: "file:///" + modelData.src.replace(/\\/g, "/")
+            opacity: (modelData.opacity === undefined ? 1 : modelData.opacity) * (modelData.ghost ? .35 : 1)
+            fillMode: Image.Stretch
+            smooth: true; mipmap: true
+            Rectangle {
+                objectName: "logoCorner"
+                visible: modelData.i === editor.noteSel && !modelData.ghost
+                x: parent.width - 6; y: parent.height - 6; width: 12; height: 12; radius: 3
+                color: "#EDEAE3"; border.color: Qt.rgba(0, 0, 0, .85)
+                MouseArea {
+                    anchors.fill: parent; anchors.margins: -4
+                    cursorShape: Qt.SizeFDiagCursor
+                    property var from: null
+                    onPressed: (m) => { from = { pts: modelData.pts.map(q => [q[0], q[1]]), x: mapToItem(logoImg.area, m.x, m.y).x } }
+                    onPositionChanged: (m) => {
+                        if (!from) return
+                        var p0 = from.pts[0], p1 = from.pts[1], k = (p1[1] - p0[1]) / Math.max(1e-6, p1[0] - p0[0])
+                        var x1 = Math.max(p0[0] + 0.02, Math.min(1, p1[0] + (mapToItem(logoImg.area, m.x, m.y).x - from.x) / logoImg.area.width))
+                        editor.setNotePoints(modelData.i, [p0, [x1, p0[1] + (x1 - p0[0]) * k]])
+                    }
+                    onReleased: from = null
+                }
+            }
+        }
+    }
+
     Canvas {
         id: canvas
         anchors.fill: parent

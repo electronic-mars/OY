@@ -33,6 +33,19 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 - Drawing pauses the video; a new drawing on a frame that already shows drawings comes and goes together with them, so two arrows in a row stay together. Esc first puts the drawing tool down.
 - The «EDITING» badge in the title bar closes the editor; Save stays off until something was cut or drawn.
 
+### After the owner's look at the council's panel
+- The fast-forward key is back with all it did (a click cycles the speed, the right button opens the speed menu). Settings stand first on the left; the time, the screenshot and the editor follow the sound, as in the concept.
+- The Play key's right button opens a file; with nothing loaded a click on it opens one too.
+- A click on the picture pauses again by default (hiding the panels is a choice in Settings › Controls).
+- The middle button and a double click go full screen on the bare picture; the panels come back only when the pointer really moves.
+- The list holds only the file you opened, by default; Settings › Playback › The list › Every opened file keeps them all. The list has a Clear key (press twice; Shift+Delete at once).
+
+### Editor, second part
+- Turn the picture a quarter clockwise (Ctrl+R, or the key on the drawing card).
+- The frame: as it is, 16:9 over a blurred copy of the picture, or 16:9 cut to fill — a phone video becomes a widescreen one. What the editor shows is what gets saved.
+- A logo or any picture over the video: the picture key on the drawing card, or drop the file on the frame. It goes to the upper right, can be moved, sized by its corner, made 60 % or 30 % opaque, and has its own track on the timeline.
+- These re-encode on saving; the strip says why.
+
 ## [0.11.1] - 2026-10-29
 
 ### Updates

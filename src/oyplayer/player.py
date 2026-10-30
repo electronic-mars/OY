@@ -596,7 +596,23 @@ class Player(QObject):
 
     def _software_filters(self):
         return bool(self.mpv["deinterlace"]) or any(
-            f.get("label") in FILTERS for f in (self.mpv["vf"] or []))
+            f.get("label") in FILTERS or f.get("label") == "edview" for f in (self.mpv["vf"] or []))
+
+    def setEditView(self, graph):
+        """The editor's turn and frame on screen: one lavfi graph under the label «edview»
+        ("" takes it away). The same graph is what saving runs, so what shows is what is saved."""
+        shown = any(f.get("label") == "edview" for f in (self.mpv["vf"] or []))
+        if not shown and not graph:
+            return                  # nothing to take away: the decoder is left alone (a reset loses the seek)
+        if shown:
+            self.mpv.command("vf", "remove", "@edview")
+        if graph:
+            if self.hwdec_enabled:
+                self.mpv["hwdec"] = "auto-copy-safe"     # software filters need the frames in memory
+            # %n% quotes the graph by its length: its brackets and commas stay inside
+            self.mpv.command("vf", "add", f"@edview:lavfi=graph=%{len(graph)}%{graph}")
+        elif self.hwdec_enabled and not self._software_filters():
+            self.mpv["hwdec"] = "auto-safe"
 
     @Slot(str)
     def toggleFilter(self, label):

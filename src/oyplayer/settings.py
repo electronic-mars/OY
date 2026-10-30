@@ -15,7 +15,7 @@ DEFAULTS = {
     # Playback
     "resume": False,
     "fileMemory": True,          # each file comes back with its own sound and subtitle tracks and volume
-    "openAdds": True,
+    "openAdds": False,           # False: an opened file replaces the list (it holds what plays); True: it joins the list
     "series": True,              # the next episodes come with an opened one
     "autoskip": True,            # skip marked openings and credits
     "history": True,
@@ -50,7 +50,7 @@ DEFAULTS = {
     "subFolders": "subs;Subs;subtitles",
     # Controls
     "wheel": "volume",           # volume | seek
-    "leftClick": "chrome",       # chrome (hide or show the panels) | pause | none
+    "leftClick": "pause",        # pause | chrome (hide or show the panels) | none
     "middleClick": "fullscreen",  # fullscreen | pause | chrome | none
     "doubleClick": "fullscreen",  # fullscreen | pause | none
     "sideButtons": "seek",       # the mouse's back/forward buttons: seek | track (previous/next) | none

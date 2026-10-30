@@ -156,7 +156,7 @@ Popup {
                         SettingRow { title: L.t.s_opened; below: true
                                      hint: L.t.s_opened_h
                                      Segmented { width: 320; value: sp.v.openAdds
-                                                 options: [{ value: true, text: L.t.o_add_list }, { value: false, text: L.t.o_replace_list }]
+                                                 options: [{ value: false, text: L.t.o_replace_list }, { value: true, text: L.t.o_add_list }]
                                                  onPicked: (x) => settings.set("openAdds", x) } }
                     }
                     Caption { text: L.t.c_series }

@@ -214,8 +214,8 @@ Item {
                                                    .filter((k, i, a) => a.indexOf(k) === i)
                 readonly property string kind: kinds.length === 1 ? kinds[0] : ""
                 y: lane.y + index * tl.pitch + (tl.pitch - 4 - height) / 2
-                icon: ({ arrow: Theme.icArrow, rect: Theme.icRect, pen: Theme.icPen, text: Theme.icText })[kind] || Theme.icPen
-                word: ({ arrow: L.t.tl_arrow, rect: L.t.tl_rect, pen: L.t.tl_pen, text: L.t.tl_text })[kind] || L.t.tl_drawings
+                icon: ({ arrow: Theme.icArrow, rect: Theme.icRect, pen: Theme.icPen, text: Theme.icText, image: "image-plus" })[kind] || Theme.icPen
+                word: ({ arrow: L.t.tl_arrow, rect: L.t.tl_rect, pen: L.t.tl_pen, text: L.t.tl_text, image: L.t.tl_image })[kind] || L.t.tl_drawings
                 on: tl.span !== null && tl.span.track === index
             }
         }

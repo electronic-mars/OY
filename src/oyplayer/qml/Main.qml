@@ -46,13 +46,18 @@ Window {
     // the panel's side margin and the space between keys: the concept's 24 and 8, tighter in the
     // narrowest window, where every key must still fit
     readonly property int edge: Theme.tier ? 24 : 12
-    readonly property int keyGap: Theme.tier ? 8 : 6
     property bool chromeAwake: true            // fullscreen: panels shown after a mouse move
     // a click on the picture (setting "leftClick" or "middleClick"): the title bar, the panel and
     // the list step aside, windowed or full screen, until the next such click (or Esc)
     property bool uiHidden: false
-    readonly property bool chromeShown: (!fs || chromeAwake) && !uiHidden
-    readonly property bool bare: fs || uiHidden        // the picture takes the whole window
+    // Going in or out of full screen, the window first changes size and only then says it is full
+    // screen: laid out by where it is going (fsPending), the picture is sized once, not twice
+    // (the owner saw it jerk), and the panels go before the window grows
+    property int fsPending: 0                            // 1 going full screen, -1 leaving it
+    readonly property bool fsLook: fsPending !== 0 ? fsPending > 0 : fs
+    Timer { id: fsSettle; interval: 1500; onTriggered: win.fsPending = 0 }   // a change that never came
+    readonly property bool chromeShown: (!fsLook || chromeAwake) && !uiHidden
+    readonly property bool bare: fsLook || uiHidden    // the picture takes the whole window
     property bool playlistShown: false
     // The area the keyboard works in: "list" (the playlist, any tab), "strip" (the edit's
     // fragments) or "" (the commands). F6 / Shift+F6 or a click in an area gives it the keys;
@@ -76,18 +81,34 @@ Window {
     onWidthChanged: updateMargins()
     onSideWChanged: updateMargins()
     onPanelHChanged: updateMargins()
-    onFsChanged: { updateMargins(); wake() }
+    // full screen from the mouse (the middle button, a double click) opens on the bare picture;
+    // from a key or the title bar the panels show for a moment, as they always did
+    property bool quietFs: false
+    property real quietUntil: 0                          // the window's own moves while it grows are no wake
+    onFsChanged: {
+        fsPending = 0
+        updateMargins()
+        if (fs && quietFs) { sleepTimer.stop(); chromeAwake = false } else wake()
+        quietFs = false
+    }
     onUiHiddenChanged: updateMargins()
     // the editor's panel is its work surface: it does not step aside
     Connections { target: editor; function onChanged() { if (editor.active) win.uiHidden = false } }
     function mouseAction(a) {
         if (a === "chrome" && !editor.active) uiHidden = !uiHidden
         else if (a === "chrome" || a === "pause") actions.run("play_pause")
-        else if (a === "fullscreen") actions.run("fullscreen")
+        else if (a === "fullscreen") {
+            quietFs = !fs
+            if (quietFs) { chromeAwake = false; sleepTimer.stop(); quietUntil = Date.now() + 1000 }
+            actions.run("fullscreen")
+        }
     }
     Component.onCompleted: updateMargins()
 
     function toggleFullscreen() {
+        fsPending = fs ? -1 : 1
+        fsSettle.restart()
+        updateMargins()
         if (fs) showNormal(); else showFullScreen()
     }
     // one sign for «a menu or card is open»: Esc closes it first, the fullscreen panels stay
@@ -97,7 +118,10 @@ Window {
     readonly property bool menuOpen: menus.some(m => m.visible)        // it takes the arrows and Enter
     readonly property bool popupOpen: popups.some(p => p.visible)
     onPopupOpenChanged: wake()
-    function wake() { chromeAwake = true; sleepTimer.restart() }
+    function wake() {
+        if (Date.now() < quietUntil) return
+        chromeAwake = true; sleepTimer.restart()
+    }
     Timer {
         id: sleepTimer; interval: 2500
         onTriggered: if (win.fs && !win.popupOpen && !panelHover.hovered && !titleHover.hovered && !playlistHover.hovered)
@@ -310,7 +334,7 @@ Window {
             it.push({ text: String(s).replace(".", L.t.dec) + "×", checked: Math.abs(player.speed - s) < 0.001, run: () => player.setSpeed(s) })
         }
         speedMenu.items = it
-        popMenu(speedMenu, playKey, at)
+        popMenu(speedMenu, ffKey, at)
     }
     Connections {
         target: player
@@ -404,8 +428,13 @@ Window {
         property point pressAt
         property bool moved: false
         onPressed: (m) => { pressAt = Qt.point(m.x, m.y); moved = false }
+        // the panels wake on a real move of the pointer, not on the window changing size under
+        // a still pointer (going full screen sends a move of its own)
+        property point lastGlobal
         onPositionChanged: (m) => {
-            win.wake()
+            var g = mapToGlobal(m.x, m.y)
+            if (Math.abs(g.x - lastGlobal.x) + Math.abs(g.y - lastGlobal.y) > 2) win.wake()
+            lastGlobal = g
             if (pressed && !moved && !win.fs
                     && Math.abs(m.x - pressAt.x) + Math.abs(m.y - pressAt.y) > 6) {
                 moved = true
@@ -429,7 +458,8 @@ Window {
             var dc = settings.values.doubleClick
             if (dc === "none") return
             if (click === "pause") actions.run("play_pause")
-            actions.run(dc === "pause" ? "play_pause" : "fullscreen")
+            if (dc === "pause") actions.run("play_pause")
+            else win.mouseAction("fullscreen")
         }
         onWheel: (w) => {
             var up = w.angleDelta.y > 0, seekWheel = settings.values.wheel === "seek"
@@ -439,9 +469,22 @@ Window {
         }
     }
 
+    // a picture dropped on the frame while editing is a logo; anything else goes to the list
+    readonly property var imageExts: ["png", "jpg", "jpeg", "webp", "bmp", "gif"]
     DropArea {
         anchors.fill: parent
-        onDropped: (d) => { if (d.hasUrls) playlist.add(d.urls, true) }
+        onDropped: (d) => {
+            if (!d.hasUrls) return
+            var u = d.urls[0].toString(), ext = u.substring(u.lastIndexOf(".") + 1).toLowerCase()
+            if (editor.active && win.imageExts.indexOf(ext) >= 0) editor.addImage(u)
+            else playlist.add(d.urls, true)
+        }
+    }
+    FileDialog {
+        id: imageDialog
+        title: L.t.d_image
+        nameFilters: [L.t.f_images + " (*.png *.jpg *.jpeg *.webp *.bmp *.gif)", L.t.f_all + " (*)"]
+        onAccepted: editor.addImage(selectedFile.toString())
     }
 
     // ---------- the editor's drawings, exactly over the picture (mpv reports where it is,
@@ -535,6 +578,7 @@ Window {
         tool: win.drawTool
         ink: win.drawInk
         onToolPicked: (t) => win.drawTool = t
+        onImageRequested: imageDialog.open()
         onInkPicked: (c) => {
             win.drawInk = c
             if (editor.noteSel >= 0) editor.setNoteColor(editor.noteSel, c.toString())
@@ -705,27 +749,39 @@ Window {
             visible: !editor.active             // editing, the editor's own row stands here
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: win.edge; rightMargin: win.edge; bottomMargin: win.deckFoot }
             height: Theme.keyPlay
-            // groups are set apart by air, not by rules (council 3): the transport on the left, the
-            // time in the middle, the navigation on the right
-            readonly property int groupGap: [12, 16, 22][Theme.tier]
+            // one step between every two things on the panel, whatever they are (the owner: gaps that
+            // jump about read as disorder); the order is the concept's: settings, the transport, the
+            // sound, the time, the screenshot and the editor; the navigation on the right
+            readonly property int step: [8, 10, 12][Theme.tier]
 
             Row {
                 id: leftKeys
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: win.keyGap
+                spacing: keys.step
+                KeyCap { id: settingsKey; objectName: "keySettings"; glyph: Theme.icSettings; tip: L.t.t_settings
+                         latched: settingsPanel.visible
+                         anchors.verticalCenter: parent.verticalCenter
+                         onClicked: actions.run("settings") }
                 // nothing loaded: mpv is not paused then, but the key offers to play (the list, or
-                // a file); the speed menu on its right button (the fast key is gone: Ctrl+X)
+                // a file); a file to open on its right button (the open key is gone: F2 too)
                 KeyCap { id: playKey; objectName: "keyPlay"; round: true; accent: true
                          width: Theme.keyPlay; height: Theme.keyPlay
                          glyph: player.paused || !player.hasFile ? Theme.icPlay : Theme.icPause
                          solid: true; glyphSize: Math.round(Theme.keyPlay * .4)
                          glyphShift: glyph === Theme.icPlay ? 1.5 : 0
-                         second: true; held: speedMenu.visible
+                         second: true
                          name: (player.paused || !player.hasFile ? L.t.t_play : L.t.t_pause).replace(/\s*\([^)]*\)/g, "")
-                         tip: (player.paused || !player.hasFile ? L.t.t_play : L.t.t_pause) + L.t.t_speed_menu
+                         tip: (player.paused || !player.hasFile ? L.t.t_play : L.t.t_pause) + L.t.t_open_menu
                          onClicked: actions.run("play_pause")
-                         onRightClicked: if (player.hasFile) win.openSpeedMenu() }
-                Item { width: keys.groupGap - win.keyGap; height: 1 }
+                         onRightClicked: actions.run("open_file") }
+                KeyCap { id: ffKey; objectName: "keyFast"; enabled: player.hasFile
+                         glyph: Theme.icFastForward; latched: player.speed > 1.001
+                         second: true; held: speedMenu.visible
+                         onRightClicked: win.openSpeedMenu()
+                         tip: (player.speed > 1.001 ? L.t.t_speed.arg(String(player.speed).replace(".", L.t.dec)) : L.t.t_fast)
+                              + L.t.t_speed_menu
+                         anchors.verticalCenter: parent.verticalCenter
+                         onClicked: actions.run("fast_play") }
                 // only for a file that has subtitles (S, Shift+S and the picture's menu load them)
                 KeyCap { id: ccKey; objectName: "keySubs"; glyph: Theme.icCaptions
                          visible: player.subTracks.length > 0
@@ -743,8 +799,6 @@ Window {
                          anchors.verticalCenter: parent.verticalCenter
                          onClicked: actions.run("mute")
                          WheelHandler { onWheel: (w) => actions.run(w.angleDelta.y > 0 ? "volume_up" : "volume_down") } }
-                // the concept's 6 px between the sound key and its slider, where the window has the room
-                Item { width: Theme.tier ? 6 : 0; height: 1 }
                 Rail {
                     id: volume
                     objectName: "volume"
@@ -758,16 +812,6 @@ Window {
                     Tip { text: Math.round(player.volume) + "%"; shown: volume.hovered || volume.dragging }
                     WheelHandler { onWheel: (w) => actions.run(w.angleDelta.y > 0 ? "volume_up" : "volume_down") }
                 }
-            }
-
-            // the time in the panel's middle, under the middle of the scale; the screenshot and the
-            // editor beside it. Pushed aside only where the transport would touch it.
-            Row {
-                id: midKeys
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: win.keyGap
-                x: Math.max(leftKeys.width + keys.groupGap,
-                            Math.min((keys.width - lcdTime.width) / 2, keys.width - rightKeys.width - keys.groupGap - width))
                 LcdTime {
                     id: lcdTime
                     objectName: "lcdTime"
@@ -777,7 +821,6 @@ Window {
                     speed: player.hasFile ? player.speed : 1
                     onSpeedReset: player.setSpeed(1)
                 }
-                Item { width: keys.groupGap - win.keyGap; height: 1 }
                 KeyCap { objectName: "keyShot"; glyph: Theme.icCamera; tip: L.t.t_shot
                          second: true
                          enabled: player.hasFile; anchors.verticalCenter: parent.verticalCenter
@@ -793,12 +836,7 @@ Window {
             Row {
                 id: rightKeys
                 anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                spacing: win.keyGap
-                KeyCap { id: settingsKey; objectName: "keySettings"; glyph: Theme.icSettings; tip: L.t.t_settings
-                         latched: settingsPanel.visible
-                         anchors.verticalCenter: parent.verticalCenter
-                         onClicked: actions.run("settings") }
-                Item { width: keys.groupGap - win.keyGap; height: 1 }
+                spacing: keys.step
                 // previous and next: only with more than one file in the list (PageUp, PageDown, the
                 // media keys and the mouse's side buttons do it always)
                 KeyCap { id: prevKey; objectName: "keyPrev"; glyph: Theme.icPrev; tip: L.t.t_prev

@@ -350,6 +350,14 @@ Rectangle {
             KeyCap { glyph: Theme.icRemove; glyphSize: 15; width: 28; height: 26; tip: L.t.pl_remove
                      objectName: "plRemove"; enabled: playlist.selected >= 0; opacity: enabled ? 1 : .35
                      onClicked: actions.run("playlist_remove") }   // the row, even while the editor is open
+            // the whole list out: a second press within three seconds (Shift+Delete at once)
+            KeyCap { id: clearList; objectName: "plClear"
+                     property bool armed: false
+                     glyph: Theme.icDelete; glyphSize: 15; width: 28; height: 26; latched: armed
+                     enabled: playlist.count > 0; opacity: enabled ? 1 : .35
+                     tip: armed ? L.t.pl_clear_armed : L.t.pl_clear
+                     onClicked: { if (armed) { actions.run("clear_playlist"); armed = false } else { armed = true; disarmList.restart() } }
+                     Timer { id: disarmList; interval: 3000; onTriggered: clearList.armed = false } }
         }
         Row {
             visible: pl.tab === 0

@@ -73,7 +73,7 @@ DEFAULT_KEYS = {
     # the keyboard's area: the playlist, the edit strip, the commands (Windows' pane key; Tab
     # belongs to the drawings)
     "F6": "area_next", "Shift+F6": "area_prev",
-    "Ctrl+Z": "edit_undo", "Ctrl+Y": "edit_redo",
+    "Ctrl+Z": "edit_undo", "Ctrl+Y": "edit_redo", "Ctrl+R": "edit_rotate",
     # skipping openings and credits: O and E belong to the editor, so the opening's start is Alt+E
     "Alt+E": "skip_open_start", "Shift+E": "skip_open_end", "Shift+O": "skip_credits",
     "Alt+O": "autoskip",
@@ -97,7 +97,7 @@ BINDABLE = (
     "subtitles", "cycle_subtitles", "load_subtitles", "subtitle_menu", "sub_later", "sub_earlier",
     "sub_slower", "sub_faster", "cycle_audio", "load_audio", "audio_menu", "audio_earlier",
     "audio_later", "pitch_up", "pitch_down", "pitch_reset", "resume", "ab_loop", "edit_mode",
-    "mark_in", "mark_out", "cut_out", "edit_whole", "edit_preview", "edit_save", "edit_save_as",
+    "mark_in", "mark_out", "cut_out", "edit_whole", "edit_preview", "edit_save", "edit_save_as", "edit_rotate",
     "area_next", "area_prev", "note_next", "note_prev", "note_in", "note_out", "edit_undo",
     "edit_redo", "skip_open_start", "skip_open_end", "skip_credits", "autoskip", "history", "radio",
     "radio_record", "scheduler",
@@ -280,6 +280,7 @@ class Actions(QObject):
             "cut_out": editor.cutOut,
             "edit_whole": editor.addWhole,
             "edit_preview": editor.togglePreview,
+            "edit_rotate": editor.rotateFrame,
             "edit_save": editor.saveHere,
             "edit_save_as": editor.requestSave,
             "area_next": lambda: self.areaRequested.emit(1),

@@ -18,7 +18,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from PySide6.QtCore import Property, QObject, Qt, Signal, Slot
+from PySide6.QtCore import Property, QObject, Qt, QUrl, Signal, Slot
 
 from .i18n import dec, tr
 from .log import log
@@ -99,6 +99,39 @@ def keyframe_before(path, t, start=0.0):
     return 0.0
 
 
+ROTATE = {90: "transpose=1", 180: "hflip,vflip", 270: "transpose=2"}
+FRAMES = ("asis", "blur", "crop")     # the frame as it is, 16:9 over a blurred copy, 16:9 cut to fill
+LOGO_H = 0.15                         # a new logo: this share of the frame's height, upper right
+
+
+def frame_size(w, h, rotate, frame):
+    """The saved frame for a picture w×h: turned, then as it is or 16:9 by its longer side
+    (a 1080×1920 phone video becomes 1920×1080)."""
+    if rotate in (90, 270):
+        w, h = h, w
+    if frame != "asis":
+        w = max(w, h)
+        h = round(w * 9 / 16)
+    return w // 2 * 2, h // 2 * 2
+
+
+def view_graph(rotate, frame, w, h, tag=""):
+    """The turn and the frame as one lavfi graph from an unnamed input to an unnamed output: mpv
+    shows it, saving runs it. w×h is the frame (frame_size); tag keeps the labels of one input
+    apart from the others' in the saving graph. "" when there is nothing to do."""
+    head = [ROTATE[rotate]] if rotate else []
+    if frame == "crop":
+        head.append(f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}")
+    if frame != "blur":
+        return ",".join(head)
+    # the background: a small copy blurred and blown up (cheap enough to play), the picture over it
+    a, b, bg, fg = (f"[{x}{tag}]" for x in ("a", "b", "bg", "fg"))
+    blur = (f"split{a}{b};{a}scale={w // 4}:{h // 4}:force_original_aspect_ratio=increase,crop={w // 4}:{h // 4},"
+            f"boxblur=10:2,scale={w}:{h}{bg};{b}scale={w}:{h}:force_original_aspect_ratio=decrease{fg};"
+            f"{bg}{fg}overlay=(W-w)/2:(H-h)/2")
+    return ",".join(head + [blur])
+
+
 def render_note(n, size, box, path):
     """One drawing as a transparent PNG the size of the saved frame; box = (x, y, w, h) of
     the picture inside it (a smaller file in the join is centred, with bars around it)."""
@@ -113,7 +146,11 @@ def render_note(n, size, box, path):
     color, lw = QColor(n["color"]), max(1.5, STROKE * ph)
     pen = QPen(color, lw, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
     pts = [QPointF(x0 + x * pw, y0 + y * ph) for x, y in n["pts"]]
-    if n["kind"] == "text":
+    if n["kind"] == "image":
+        p.setRenderHint(QPainter.SmoothPixmapTransform)
+        p.setOpacity(n.get("opacity", 1.0))
+        p.drawImage(QRectF(pts[0], pts[1]).normalized(), QImage(n["src"]))
+    elif n["kind"] == "text":
         font = QFont(TEXT_FONT)
         font.setPixelSize(max(6, round(TEXT_SIZE * ph)))
         font.setWeight(QFont.DemiBold)
@@ -196,6 +233,9 @@ class Editor(QObject):
         self._notes = []
         self._noteSel = -1
         self._snaps = {}             # (path, border) -> also the end before it: waiting for its keyframe
+        self._rotate = 0             # the whole edit turned by 0, 90, 180 or 270 degrees, clockwise
+        self._frame = "asis"         # FRAMES
+        self._view = None            # what mpv shows now: (path, rotate, frame, w, h)
         self.codec = "copy"          # setting "exportCodec": copy | h264 | h265
         self._probes = {}
         # ffprobe runs off the GUI thread, which also draws the picture: a fragment is on the
@@ -220,6 +260,7 @@ class Editor(QObject):
         self._done.connect(self._finished, Qt.QueuedConnection)
         self._found.connect(self._on_found, Qt.QueuedConnection)
         player.changed.connect(self._follow)
+        player.changed.connect(self._apply_view)
         player.positionChanged.connect(self._follow)
 
     # ---- state for QML
@@ -233,8 +274,12 @@ class Editor(QObject):
 
     def _why_not_copy(self):
         """What keeps the edit from being saved by copying; empty when nothing does."""
+        if any(n["kind"] == "image" for f in self.frags for n in self._notes_in(f)):
+            return tr("why_logo")
         if self._overlaid():
             return tr("why_drawings")
+        if self._rotate or self._frame != "asis":
+            return tr("why_frame")
         if len({json.dumps(self._probes[f["path"]]["sig"]) for f in self.frags if f["path"] in self._probes}) > 1:
             return tr("why_formats")
         return ""
@@ -319,7 +364,7 @@ class Editor(QObject):
     @Property(bool, notify=changed)
     def edited(self):
         """Something to save: more than one file whole and bare."""
-        if self._notes or len(self.frags) != 1:
+        if self._notes or self._rotate or self._frame != "asis" or len(self.frags) != 1:
             return bool(self.frags)
         f = self.frags[0]
         return f["start"] > MIN_LEN or f["end"] < self._length(f["path"]) - MIN_LEN
@@ -408,7 +453,7 @@ class Editor(QObject):
 
     # ---- undo: every change keeps the state it replaced, under a name for the OSD
     def _snap(self):
-        return copy.deepcopy((self.frags, self._notes, self._selected, self._noteSel))
+        return copy.deepcopy((self.frags, self._notes, self._selected, self._noteSel, self._rotate, self._frame))
 
     def _push(self, what, state, merge=None):
         """merge: a key; calls with the same key in quick succession (a drag) are one step."""
@@ -430,7 +475,8 @@ class Editor(QObject):
             return
         what, state = src.pop()
         dst.append((what, self._snap()))
-        self.frags, self._notes, self._selected, self._noteSel = state
+        self.frags, self._notes, self._selected, self._noteSel, self._rotate, self._frame = state
+        self._apply_view()
         self._preview, self._merge, self._active, self._cue = -1, None, True, -1
         for f in self.frags:
             self._ask(f["path"], f["start"])
@@ -455,13 +501,60 @@ class Editor(QObject):
             self._active = True
             if self._tools():
                 self._ensure(self.p.path)
+            self._apply_view()
             self.changed.emit()
 
     @Slot()
     def close(self):
         self._preview = -1
         self._active = False
+        self._apply_view()
         self.changed.emit()
+
+    # ---- the turn and the frame: the whole edit, shown by mpv while editing
+    @Property(int, notify=changed)
+    def rotation(self):
+        return self._rotate
+
+    @Property(str, notify=changed)
+    def frame(self):
+        return self._frame
+
+    @Slot()
+    def rotateFrame(self):
+        """Ctrl+R: the picture a quarter turn clockwise."""
+        if not self._here()[0]:
+            return
+        self._mark(tr("undo_rotate"))
+        self._rotate = (self._rotate + 90) % 360
+        self._apply_view()
+        self.p.osdMessage.emit(tr("osd_rotated", self._rotate))
+        self.changed.emit()
+
+    @Slot(str)
+    def setFrame(self, frame):
+        if frame == self._frame or frame not in FRAMES or not self._here()[0]:
+            return
+        self._mark(tr("undo_frame"))
+        self._frame = frame
+        self._apply_view()
+        self.changed.emit()
+
+    def _source_size(self):
+        try:
+            return int(self.p.mpv.width or 0), int(self.p.mpv.height or 0)       # mpv["…"] reads options/…
+        except (TypeError, ValueError, AttributeError):
+            return 0, 0
+
+    def _apply_view(self):
+        w, h = self._source_size()
+        key = (self.p.path, self._rotate, self._frame, w, h) if self._active and w and h else None
+        if key == self._view:
+            return
+        self._view = key
+        graph = view_graph(self._rotate, self._frame, *frame_size(w, h, self._rotate, self._frame)) if key else ""
+        log.info("edit view %r", graph)
+        self.p.setEditView(graph)
 
     def _here(self):
         """The playing file and position, opening the editor on the way (LosslessCut: I and
@@ -615,6 +708,34 @@ class Editor(QObject):
         self.changed.emit()
         return self._noteSel
 
+    @Slot(str, result=int)
+    def addImage(self, url):
+        """A picture over the video (a logo): upper right, LOGO_H of the frame high, on screen for
+        the whole file; moved and sized like a drawing, its ends on the timeline."""
+        path, _t = self._here()
+        src = QUrl(url).toLocalFile() if "://" in url else url
+        from PySide6.QtGui import QImage
+        img = QImage(src)
+        if not path or img.isNull():
+            self.p.osdMessage.emit(tr("osd_no_image"))
+            return -1
+        fw, fh = frame_size(*self._source_size(), self._rotate, self._frame)
+        wf = LOGO_H * img.width() / img.height() * fh / max(1, fw)
+        self._mark(tr("undo_add", tr("note_image")))
+        self._notes.append({"kind": "image", "path": path, "a": 0.0, "b": self._length(path), "color": "#FFFFFF",
+                            "pts": [[0.97 - wf, 0.04], [0.97, 0.04 + LOGO_H]], "text": "", "src": src, "opacity": 1.0})
+        self._choose(note=len(self._notes) - 1)
+        log.info("logo %s on %s", Path(src).name, Path(path).name)
+        self.changed.emit()
+        return self._noteSel
+
+    @Slot(int, float)
+    def setNoteOpacity(self, i, v):
+        if self._notes[i].get("opacity", 1.0) != v:
+            self._mark(tr("undo_opacity"))
+            self._notes[i]["opacity"] = v
+            self.changed.emit()
+
     @Slot(int, "QVariantList")
     def setNotePoints(self, i, pts):
         self._mark(tr("undo_move", tr("note_" + self._notes[i]["kind"])), merge=("pts", i))
@@ -765,6 +886,7 @@ class Editor(QObject):
     # ---- preview: only the fragments, in order
     def _show(self, row, play):
         f = self.frags[row]
+        log.info("edit show %d %s at %.2f (lossless %s)", row, Path(f["path"]).name, self._from(f), self.lossless)
         if f["path"] == self.p.path:
             self.p.seek(self._from(f))
         else:
@@ -918,17 +1040,25 @@ class Editor(QObject):
     def _encode_command(self, codec, work, frags, notes):
         probes = [self._probe(f["path"]) for f in frags]
         ref = max(probes, key=lambda p: p["w"] * p["h"])     # the largest picture sets the frame
-        w, h = ref["w"] // 2 * 2, ref["h"] // 2 * 2
+        rot, frame = self._rotate, self._frame
+        w, h = frame_size(ref["w"], ref["h"], rot, frame)
         layout = next((p["layout"] for p in probes if p["audio"]), "")
         args, chains, pads, layers = [], [], "", []
         for i, (f, pr) in enumerate(zip(frags, probes)):
             args += ["-ss", f"{f['start']:.3f}", "-to", f"{f['end']:.3f}", "-i", f["path"]]
-            chain = (f"[{i}:v:0]scale={w}:{h}:force_original_aspect_ratio=decrease,"
-                     f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={ref['fps']},format=yuv420p")
+            if frame == "asis":
+                body = ",".join(([ROTATE[rot]] if rot else [])
+                                + [f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2"])
+            else:
+                body = view_graph(rot, frame, w, h, tag=str(i))
+            chain = f"[{i}:v:0]{body},setsar=1,fps={ref['fps']},format=yuv420p"
             # Drawings: a PNG per drawing over the picture as it sits in the saved frame,
             # shown between its times counted from the fragment's start (input -ss resets t).
-            r = min(w / pr["w"], h / pr["h"]) if pr["w"] and pr["h"] else 1
-            pw, ph = round(pr["w"] * r), round(pr["h"] * r)
+            # On screen they were drawn over the picture as turned (as it is) or over the whole
+            # 16:9 frame (blur, crop): the same box here.
+            sw, sh = (pr["h"], pr["w"]) if rot in (90, 270) else (pr["w"], pr["h"])
+            r = min(w / sw, h / sh) if sw and sh else 1
+            pw, ph = (round(sw * r), round(sh * r)) if frame == "asis" else (w, h)
             label = f"[s{i}]"
             for k, n in enumerate(self._notes_in(f, notes)):
                 png = work / f"note{len(layers)}.png"

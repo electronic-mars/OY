@@ -241,6 +241,10 @@ class SelfTest(QObject):
         self.settings.set("lang", "en")
         self.settings.set("audioLang", "eng,en")
         self.settings.set("subLang", "eng,en")
+        # the list as it was before 0.11.2 (opened files join it): the older checks build lists so;
+        # the new default (only the opened file) is checked in fb4
+        self.list_default = self.settings["openAdds"]
+        self.settings.set("openAdds", True)
         self.steps = [
             (0, self.s_lang_open), (700, self.s_lang_page), (500, self.s_lang_uk), (500, self.s_lang_uk_chk),
             (500, self.s_lang_en_chk),
@@ -2251,7 +2255,7 @@ class SelfTest(QObject):
             (600, ui("drawRect")), (300, draw([(0.36, 0.22), (0.41, 0.3), (0.46, 0.4)])),
             (300, ui("drawArrow")), (300, draw([(0.55, 0.4), (0.58, 0.3), (0.62, 0.22)])),
             (300, ui("drawPen")), (300, draw([(0.69, 0.22), (0.72, 0.32), (0.75, 0.22), (0.78, 0.32)])),
-            (300, ui("drawText")), (300, lambda: self.click_layer(0.86, 0.1)), (400, lambda: self.type_text("Label")),
+            (300, ui("drawText")), (300, lambda: self.click_layer(0.86, 0.3)), (400, lambda: self.type_text("Label")),
             (300, lambda: self.type_text("\r", Qt.Key_Return)),
             (300, ui("drawRect")), (0, seek(45.0)), (700, draw([(0.1, 0.8), (0.15, 0.85), (0.2, 0.9)])),
             (300, ui("drawSelect")), (300, self.s_fb2_lay_short), (0, seek(34.5)), (0, self.park),
@@ -3411,29 +3415,33 @@ class SelfTest(QObject):
         self.check("the volume is filled in neutral metal: the accent is only the play key and the position",
                    coloured == 0, f"coloured pixels in the volume={coloured}")
         self.p.mpv.mute = True           # the sound key latches: checked in the next step
-        gone = [n for n in ("keyEject", "keyFrame", "keyFast", "keyVideo") if self.find_item(n) is not None]
+        gone = [n for n in ("keyEject", "keyFrame", "keyVideo") if self.find_item(n) is not None]
         subs, prev = self.find_item("keySubs"), self.find_item("keyPrev")
-        self.check("the panel without Open, Frame, Fast and Video; subtitles only for a file that has them, "
+        self.check("the panel without Open, Frame and Video; subtitles only for a file that has them, "
                    "previous/next only with more than one file in the list",
                    not gone and subs.isVisible() == (len(self.p.subTracks) > 0) and prev.isVisible() == (self.pl.count > 1),
                    f"left on the panel={gone} subs shown={subs.isVisible()} tracks={len(self.p.subTracks)} "
                    f"prev shown={prev.isVisible()} list={self.pl.count}")
-        names = ("keyPlay", "keySubs", "keySound", "keyShot", "keyEdit", "keySettings", "keyPrev", "keyPlaylist", "keyNext")
+        names = ("keySettings", "keyPlay", "keyFast", "keySubs", "keySound", "keyShot", "keyEdit", "keyPrev", "keyPlaylist", "keyNext")
         caps = {n: self.find_item(n).property("flat") for n in names}
         self.check("every key of the panel is a rubber cap (the Braun concept)",
                    all(v is False for v in caps.values()), f"flat={caps}")
         keys, shot = self.find_item("keyPlay").parentItem().parentItem(), self.find_item("keyShot")
-        lcd = self.find_item("lcdTime")
-        mid = lcd.mapToScene(QPointF(lcd.width() / 2, 0)).x() - keys.mapToScene(QPointF(keys.width() / 2, 0)).x()
+        lcd, vol, edit = self.find_item("lcdTime"), self.find_item("volume"), self.find_item("keyEdit")
+        order = sorted(("keySettings", "keyPlay", "keyFast", "keySound", "volume", "lcdTime", "keyShot", "keyEdit"),
+                       key=lambda n: self.find_item(n).mapToScene(QPointF(0, 0)).x())
         rules = [c for row in keys.childItems() for c in row.childItems() if c.isVisible() and c.width() <= 1.5 and c.height() > 10]
-        self.check("groups stand apart by air, no rules between them; the time glass in the panel's middle, as high as the caps",
-                   not rules and abs(mid) <= 2 and lcd.height() == shot.height(),
-                   f"rules={len(rules)} lcd off the middle by {mid:.1f} lcd={lcd.height()} caps={shot.height()}")
+        after = lcd.mapToScene(QPointF(0, 0)).x() - vol.mapToScene(QPointF(vol.width(), 0)).x()
+        self.check("the concept's order: settings first, play, fast, the sound, the time right after it, the screenshot, "
+                   "the editor; groups apart by air, no rules; the glass as high as the caps",
+                   order == ["keySettings", "keyPlay", "keyFast", "keySound", "volume", "lcdTime", "keyShot", "keyEdit"]
+                   and not rules and after <= 24 and lcd.height() == shot.height(),
+                   f"order={order} rules={len(rules)} volume->time={after:.0f} lcd={lcd.height()} caps={shot.height()}")
         txt = lcd.property("text") if lcd else ""
         self.check("the time reads as the scale does: 01:15 / 01:30, and a click is said to switch it",
                    re.fullmatch(r"01:1\d / 01:30", txt or "") is not None and "Click" in (lcd.property("tip") or ""),
                    f"lcd={txt!r} tip={lcd and lcd.property('tip')!r}")
-        second = {n: self.find_item(n).property("second") for n in ("keyPlay", "keySound", "keyShot")}
+        second = {n: self.find_item(n).property("second") for n in ("keyPlay", "keyFast", "keySound", "keyShot")}
         tips = {n: self.find_item(n).property("tip") for n in second}
         self.check("keys with a second action on the right button carry a corner mark and say so",
                    all(v is True for v in second.values()) and all("right click" in t for t in tips.values()),
@@ -3459,9 +3467,8 @@ class SelfTest(QObject):
         self.win.openSpeedMenu(None)
 
     def s_st4_menu_key(self):
-        self.check("the key whose menu is open stays pressed in (speed: the play key's right button)",
-                   self.find_item("keyPlay").property("down") is True,
-                   f"down={self.find_item('keyPlay').property('down')}")
+        self.check("the key whose menu is open stays pressed in", self.find_item("keyFast").property("down") is True,
+                   f"down={self.find_item('keyFast').property('down')}")
 
     def s_st4_edit_prep(self):
         # an ordinary window, wide enough for the fragments' words (a narrow one hides the
@@ -3592,9 +3599,12 @@ class SelfTest(QObject):
     # above never touched (the picture card's sliders set nothing for a release)
     def fb4_steps(self):
         return [
+            (0, self.s_fb4_list_one), (1500, lambda: self.pl.add([self.medias[-1]], True)), (1500, self.s_fb4_list_one_chk),
             (0, self.s_fb4_prep), (1500, lambda: self.key("V", Qt.ShiftModifier)), (600, self.s_fb4_rail),
             (400, self.s_fb4_railed), (0, lambda: self.key("Esc")),
-            (400, self.s_fb4_left), (900, self.s_fb4_hidden), (0, self.s_fb4_left), (900, self.s_fb4_shown),
+            (400, self.s_fb4_left), (500, self.s_fb4_paused), (0, lambda: self.settings.set("leftClick", "chrome")),
+            (300, self.s_fb4_left), (900, self.s_fb4_hidden), (0, self.s_fb4_left), (900, self.s_fb4_shown),
+            (0, lambda: self.settings.set("leftClick", "pause")),
             (0, lambda: self.s_fb4_button(Qt.MiddleButton)), (900, self.s_fb4_full),
             (0, lambda: self.s_fb4_button(Qt.MiddleButton)), (900, self.s_fb4_windowed),
             (0, self.s_fb4_back), (700, self.s_fb4_backed),
@@ -3602,7 +3612,25 @@ class SelfTest(QObject):
             (700, self.s_fb4_settings), (0, self.s_fb4_lang),
             (500, self.s_fb4_lang_menu), (500, self.s_fb4_reset), (300, self.s_fb4_reset2), (300, self.s_fb4_reset_done),
             (0, lambda: self.key("Esc")), (300, self.s_fb4_thumb),
+            (0, self.s_fb4_ed_prep), (1500, lambda: self.key("E", Qt.ControlModifier)), (600, lambda: self.key("R", Qt.ControlModifier)),
+            (1200, self.s_fb4_turned), (0, lambda: self.ed.setFrame("blur")), (1200, self.s_fb4_framed),
+            (0, self.s_fb4_logo), (800, self.s_fb4_logo_shown), (0, self.s_fb4_save_framed),
+            (500, self.until(lambda: not self.ed.exporting, 90)), (0, self.s_fb4_saved_framed),
+            (0, lambda: self.key("Z", Qt.ControlModifier)), (0, lambda: self.key("Z", Qt.ControlModifier)),
+            (0, lambda: self.key("Z", Qt.ControlModifier)), (1200, self.s_fb4_undone),
+            (0, lambda: self.ed.close()), (900, self.s_fb4_ed_closed),
         ]
+
+    def s_fb4_list_one(self):
+        self.settings.set("openAdds", self.list_default)
+        self.pl.add([self.media], True)
+
+    def s_fb4_list_one_chk(self):
+        clear = self.find_item("plClear")
+        self.check("by default an opened file replaces the list: it holds only what plays; the list has a «Clear» key",
+                   self.list_default is False and self.pl.count == 1 and clear is not None,
+                   f"default joins={self.list_default} rows={self.pl.count} clear key={clear is not None}")
+        self.settings.set("openAdds", True)
 
     def s_fb4_prep(self):
         if self.ed.active:
@@ -3631,9 +3659,15 @@ class SelfTest(QObject):
         self.paused0 = self.st("paused")
         QTest.mouseClick(self.win, Qt.LeftButton, Qt.NoModifier, self.video_point())
 
+    def s_fb4_paused(self):
+        self.check("a click on the picture pauses (the default) and the panels stay",
+                   self.st("paused") is (not self.paused0) and self.win.property("uiHidden") is False,
+                   f"paused {self.paused0}->{self.st('paused')} hidden={self.win.property('uiHidden')}")
+        self.p.mpv.pause = self.paused0
+
     def s_fb4_hidden(self):
         panel = self.win.findChild(QObject, "panel")
-        self.check("a click on the picture hides the panels (the default), the picture takes the window, playback goes on",
+        self.check("with «hide panels» set, a click hides them, the picture takes the window, playback goes on",
                    self.win.property("uiHidden") is True and panel.property("visible") is False
                    and self.st("paused") == self.paused0, f"hidden={self.win.property('uiHidden')} "
                    f"panel={panel.property('visible')} paused {self.paused0}->{self.st('paused')}")
@@ -3645,9 +3679,18 @@ class SelfTest(QObject):
 
     def s_fb4_button(self, button):
         QTest.mouseClick(self.win, button, Qt.NoModifier, self.video_point())
+        # at once, before the window has grown: the picture is already laid out for full screen
+        self.margin_at_click = (self.p.mpv["video-margin-ratio-top"], self.p.mpv["video-margin-ratio-bottom"])
+        self.panels_at_click = self.win.property("chromeShown")
 
     def s_fb4_full(self):
-        self.check("the middle button goes full screen (the default)", self.win.property("fs") is True)
+        self.check("the middle button goes full screen (the default) on the bare picture: no panels, and the picture "
+                   "laid out once, for full screen, at the click (no jerk)",
+                   self.win.property("fs") is True and self.win.property("chromeShown") is False
+                   and self.margin_at_click == (0.0, 0.0) and self.panels_at_click is False,
+                   f"fs={self.win.property('fs')} panels={self.win.property('chromeShown')} "
+                   f"at the click: margins={self.margin_at_click} panels={self.panels_at_click}")
+        self.shot("fb4_05_fullscreen_bare")
 
     def s_fb4_windowed(self):
         self.check("and back to the window", self.win.property("fs") is False)
@@ -3702,6 +3745,82 @@ class SelfTest(QObject):
                    "the language stays", self.reset_armed and self.settings["fitWindow"] is True
                    and self.settings["onTop"] == "never" and self.settings["lang"] == self.lang0,
                    f"armed first={self.reset_armed} fit={self.settings['fitWindow']} onTop={self.settings['onTop']}")
+
+    def s_fb4_ed_prep(self):
+        self.ed.frags, self.ed._notes = [], []
+        self.ed._rotate, self.ed._frame = 0, "asis"
+        self.p.mpv.pause = True
+        self.pl.add([self.media], True)          # test720.mp4: 1280×720
+
+    def edview(self):
+        return any(f.get("label") == "edview" for f in (self.p.mpv["vf"] or []))
+
+    def s_fb4_turned(self):
+        self.check("Ctrl+R turns the picture a quarter: on screen 720×1280, by a filter of the edit",
+                   self.ed.rotation == 90 and self.edview() and (self.st("videoW"), self.st("videoH")) == (720, 1280),
+                   f"rotation={self.ed.rotation} view={self.edview()} shown={self.st('videoW')}x{self.st('videoH')}")
+        self.shot("fb4_06_turned")
+
+    def s_fb4_framed(self):
+        self.check("16:9 over a blurred copy: the turned picture stands in a 1280×720 frame",
+                   self.ed.frame == "blur" and (self.st("videoW"), self.st("videoH")) == (1280, 720),
+                   f"frame={self.ed.frame} shown={self.st('videoW')}x{self.st('videoH')}")
+        self.shot("fb4_07_blur_frame")
+
+    def s_fb4_logo(self):
+        img = QImage(64, 32, QImage.Format_ARGB32)
+        img.fill(QColor(255, 0, 0, 255))
+        self.logo_png = self.out / "logo.png"
+        img.save(str(self.logo_png))
+        self.logo_i = self.ed.addImage(str(self.logo_png))
+
+    def s_fb4_logo_shown(self):
+        n = self.ed.notes[self.logo_i] if 0 <= self.logo_i < len(self.ed.notes) else {}
+        logo = self.find_item(f"logo{self.logo_i}")
+        img = capture(int(self.win.winId()))
+        mid = logo.mapToScene(QPointF(logo.width() / 2, logo.height() / 2)) if logo is not None else QPointF()
+        dpr = self.win.devicePixelRatio()
+        px = img.pixelColor(int(mid.x() * dpr), int(mid.y() * dpr))
+        self.check("the logo shows on the frame as it is (red here), not only in the saved file",
+                   logo is not None and logo.property("progress") == 1.0 and px.red() > 180 and px.green() < 90,
+                   f"loaded={logo and logo.property('progress')} source={logo and logo.property('source')} pixel={px.name()}")
+        self.check("a logo goes to the upper right, 15 % of the frame high, over the whole file; saving says why it re-encodes",
+                   n.get("kind") == "image" and abs(n["pts"][1][1] - n["pts"][0][1] - 0.15) < 0.01 and n["pts"][1][0] > 0.9
+                   and n["a"] == 0 and logo is not None and logo.isVisible()
+                   and self.ed.reason == "has a logo" and not self.ed.lossless,
+                   f"note={n} shown={logo is not None and logo.isVisible()} reason={self.ed.reason!r}")
+        self.shot("fb4_08_logo")
+
+    def s_fb4_save_framed(self):
+        self.ed.frags = [dict(self.ed.frags[0], start=2.0, end=4.0)]
+        self.ed.changed.emit()
+        self.framed_out = self.out / "framed.mp4"
+        self.ed.exportTo(str(self.framed_out))
+
+    def s_fb4_saved_framed(self):
+        info = ffprobe(self.framed_out) if self.framed_out.exists() else {}
+        v = next((x for x in info.get("streams", []) if x["codec_type"] == "video"), {})
+        frame = self.out / "framed.png"
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", "1", "-i", str(self.framed_out), "-frames:v", "1", str(frame)],
+                       capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        img = QImage(str(frame))
+        n = self.ed.notes[self.logo_i]
+        at = QPoint(int((n["pts"][0][0] + n["pts"][1][0]) / 2 * img.width()), int((n["pts"][0][1] + n["pts"][1][1]) / 2 * img.height())) \
+            if not img.isNull() else QPoint()
+        c = img.pixelColor(at) if not img.isNull() else QColor()
+        self.check("saved turned, in a 16:9 frame over the blur, with the logo where it was shown",
+                   (v.get("width"), v.get("height")) == (1280, 720) and c.red() > 180 and c.green() < 90 and c.blue() < 90,
+                   f"saved={v.get('width')}x{v.get('height')} logo pixel={c.name() if c.isValid() else None} at {at.x()},{at.y()}")
+
+    def s_fb4_undone(self):
+        self.check("Ctrl+Z takes back the logo, the frame and the turn, one step each",
+                   self.ed.rotation == 0 and self.ed.frame == "asis" and not any(n["kind"] == "image" for n in self.ed.notes)
+                   and not self.edview(), f"rotation={self.ed.rotation} frame={self.ed.frame} view={self.edview()}")
+
+    def s_fb4_ed_closed(self):
+        self.check("closing the editor leaves the picture as the file has it",
+                   not self.edview() and (self.st("videoW"), self.st("videoH")) == (1280, 720),
+                   f"view={self.edview()} shown={self.st('videoW')}x{self.st('videoH')}")
 
     def s_fb4_thumb(self):
         thumbs = sorted((self.out / "home" / "thumbs").glob("*.png"))
@@ -3774,12 +3893,12 @@ class SelfTest(QObject):
         self.ed.close()
 
     def s_tl_panel(self):
-        play, prev, nxt = (self.find_item(n) for n in ("keyPlay", "keyPrev", "keyNext"))
+        play, prev, nxt, ff = (self.find_item(n) for n in ("keyPlay", "keyPrev", "keyNext", "keyFast"))
         g = lambda k: k.property("glyph")
         sign = self.find_item("sign", play)
         self.check("the transport signs are one family of line icons (Lucide), play and pause filled and drawn sharp",
                    g(play) in ("play", "pause") and play.property("solid") is True and g(prev) == "skip-back"
-                   and g(nxt) == "skip-forward" and sign is not None
+                   and g(nxt) == "skip-forward" and g(ff) == "fast-forward" and sign is not None
                    and sign.property("progress") == 1.0 and sign.property("source").toString().startswith("image://icon/"),
                    f"play={g(play)!r} prev={g(prev)!r} next={g(nxt)!r} "
                    f"sign={sign is not None and (sign.property('progress'), sign.property('source').toString())}")
@@ -3790,20 +3909,25 @@ class SelfTest(QObject):
         pref = ctypes.c_int(0)
         ctypes.WinDLL("dwmapi").DwmGetWindowAttribute(ctypes.c_void_p(int(self.win.winId())), 33, ctypes.byref(pref), 4)
         self.check("the window asks Windows 11 for rounded corners (DWMWCP_ROUND)", pref.value == 2, f"corner preference={pref.value}")
-        st, snd = self.find_item("keySettings"), self.find_item("keySound")
-        gap = prev.mapToScene(QPointF(0, 0)).x() - st.mapToScene(QPointF(st.width(), 0)).x()
-        group = snd.mapToScene(QPointF(0, 0)).x() - play.mapToScene(QPointF(play.width(), 0)).x()
-        self.check("Settings stand apart from the navigation as the groups do, by air",
-                   prev.isVisible() and abs(gap - group) < 0.5 and gap >= 18, f"settings-prev={gap} a group's gap={group}")
+        gaps = self.panel_gaps()
+        self.check("one step between every two things on the panel, settings first",
+                   gaps and max(gaps) - min(gaps) <= 1 and min(gaps) >= 8, f"gaps={gaps}")
         self.shot("tl_03_panel")
 
+    def panel_gaps(self):
+        """The space between each two neighbours in the panel's left row (keys, slider, time)."""
+        row = self.find_item("keySettings").parentItem()
+        items = sorted((c for c in row.childItems() if c.isVisible() and c.width() > 0), key=lambda c: c.x())
+        return [round(b.x() - (a.x() + a.width()), 1) for a, b in zip(items, items[1:])]
+
     def s_tl_narrow(self):
-        ed, st, prev = (self.find_item(n) for n in ("keyEdit", "keySettings", "keyPrev"))
-        free = st.mapToScene(QPointF(0, 0)).x() - ed.mapToScene(QPointF(ed.width(), 0)).x()
-        gap = prev.mapToScene(QPointF(0, 0)).x() - st.mapToScene(QPointF(st.width(), 0)).x()
-        self.check("in a 760 px window the groups keep their air and run into nothing",
-                   self.win.width() == 760 and free > 4 and gap >= 11.5,
-                   f"width={self.win.width()} free={free} settings-prev={gap}")
+        ed, st, play, prev, lst = (self.find_item(n) for n in ("keyEdit", "keySettings", "keyPlay", "keyPrev", "keyPlaylist"))
+        right = prev if prev.isVisible() else lst
+        free = right.mapToScene(QPointF(0, 0)).x() - ed.mapToScene(QPointF(ed.width(), 0)).x()
+        gaps = self.panel_gaps()
+        self.check("in a 760 px window the step stays one and nothing runs into anything",
+                   self.win.width() == 760 and free > 4 and gaps and max(gaps) - min(gaps) <= 1 and min(gaps) >= 6,
+                   f"width={self.win.width()} free={free} gaps={gaps}")
         self.shot("tl_04_narrow")
         self.win.setWidth(1280)
 
