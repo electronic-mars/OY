@@ -40,6 +40,11 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 - The middle button and a double click go full screen on the bare picture; the panels come back only when the pointer really moves.
 - The list holds only the file you opened, by default; Settings › Playback › The list › Every opened file keeps them all. The list has a Clear key (press twice; Shift+Delete at once).
 
+- No subtitles key on the panel: S turns them on and off, Alt+S and the picture's menu open their menu.
+- Menus have taller rows, a sign on the left and the matching key on the right.
+- One step between every two things on the panel.
+- Full screen from the mouse stays on the bare picture: the panels vanish at once, a resting hand does not bring them back, the window's keys show only at the top edge.
+
 ### Editor, second part
 - Turn the picture a quarter clockwise (Ctrl+R, or the key on the drawing card).
 - The frame: as it is, 16:9 over a blurred copy of the picture, or 16:9 cut to fill — a phone video becomes a widescreen one. What the editor shows is what gets saved.
