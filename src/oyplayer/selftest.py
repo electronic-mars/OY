@@ -71,6 +71,9 @@ class _IcyHandler(BaseHTTPRequestHandler):
                     time.sleep(ahead / 16000)
         except OSError:
             pass                    # the player went away
+        # the drop is one: this connection ends, the player's reconnect gets a stream again (a
+        # flag cleared by the test 400 ms later was missed by a handler asleep between blocks)
+        self.server.drop = False
 
     def log_message(self, *args):
         pass
@@ -245,7 +248,8 @@ class SelfTest(QObject):
         # the new default (only the opened file) is checked in fb4
         self.list_default = self.settings["openAdds"]
         self.settings.set("openAdds", True)
-        self.steps = [
+        # the quick part, run every time: the strings, open, play, pause, seek, keys, full screen
+        smoke = [
             (0, self.s_lang_open), (700, self.s_lang_page), (500, self.s_lang_uk), (500, self.s_lang_uk_chk),
             (500, self.s_lang_en_chk),
             (0, self.s_open), (2500, self.s_playing), (0, self.s_click_pause),
@@ -254,6 +258,8 @@ class SelfTest(QObject):
             (0, self.s_fast), (300, self.s_fast_done), (0, self.s_shot), (800, self.s_shot_done),
             (0, self.s_fullscreen), (900, self.s_fs_shown), (3200, self.s_fs_hidden),
             (0, self.s_esc), (800, self.s_windowed),
+        ]
+        base = [
             (0, self.s_pl_show), (600, self.s_pl_shown), (0, self.s_pl_next), (1500, self.s_pl_nexted),
             (0, self.s_pl_prev), (1500, self.s_pl_preved), (0, self.s_pl_eof), (3000, self.s_pl_eofed),
             (0, self.s_pl_repeat_one), (3000, self.s_pl_repeated), (0, self.s_pl_delete),
@@ -279,7 +285,7 @@ class SelfTest(QObject):
 
         def key(name):
             return lambda: self.key(name)
-        self.steps += [
+        editor = [
             # M6: the editor. test_long.mkv is playing (left by the resume steps).
             (0, self.s_ed_open), (700, self.s_ed_key), (700, self.s_ed_opened),
             ] + self.keep_steps([(12.0, 24.5), (41.0, 47.0)]) + [(0, self.s_ed_marked),
@@ -304,7 +310,7 @@ class SelfTest(QObject):
 
         def ui(name):
             return lambda: self.click(name)
-        self.steps += [
+        draw = [
             # M7: drawings over the picture, on test_long.mkv: a new edit of one fragment, 12-24.5 s
             (0, self.s_dr_open), (700, self.s_dr_key), (600, key("I")), (300, self.until(lambda: not self.ed.pending, 10, 50)),
             (0, seek(24.5)), (500, key("O")),
@@ -329,7 +335,7 @@ class SelfTest(QObject):
         def hover(frac):
             return lambda: QTest.mouseMove(self.win, self.rail_pt(frac))
         mem, mem2 = str(self.out / "memory.mkv"), str(self.out / "memory2.mp4")
-        self.steps += [
+        ideas = [
             # Ideas: the frame under the pointer over the seek bar, on test_long.mkv (keyframes
             # every 10 s) while it plays
             # first a second of plain playing, as the measure of what this machine drops anyway
@@ -352,7 +358,7 @@ class SelfTest(QObject):
 
         def keym(name, mods):
             return lambda: self.key(name, mods)
-        self.steps += [
+        m8 = [
             # M8: a series in a folder of its own (links to test_long.mkv, 90 s): one opened
             # episode brings the next ones; the opening and the credits marked in one are skipped
             # in the others
@@ -392,18 +398,54 @@ class SelfTest(QObject):
             (0, lambda: self.settings_page(2, "setRadioDir")), (900, lambda: self.shot("m8_11_settings_radio")),
             (0, lambda: self.settings_page(4, "setGlobalMedia")), (900, lambda: self.shot("m8_12_settings_keys")),
             (0, lambda: self.key("Esc")), (500, self.s_about), (600, self.s_about_shot),
-            (0, self.s_finish),
         ]
-        self.steps[-1:-1] = self.fb1_steps()     # feedback 1: before the result line
-        self.steps[-1:-1] = self.fb2_steps()     # feedback 2 (UI/UX council 1, stages 1 and 2)
-        self.steps[-1:-1] = self.fb3_steps()     # release blockers: failures said, streams reconnected
-        self.steps[-1:-1] = self.st1_steps()     # stage 1: nothing slow on the GUI thread
-        self.steps[-1:-1] = self.st3_steps()     # stage 3: keyboard areas and the screen reader
-        self.steps[-1:-1] = self.st4_steps()     # stage 4: the Braun panel, an honest edit
-        self.steps[-1:-1] = self.tails_steps()   # the tails of stages 1-4
-        self.steps[-1:-1] = self.fb4_steps()     # feedback 4 (0.11.1): the mouse, settings, the picture card
-        self.steps[-1:-1] = self.upd_steps()     # the update from the release page
+        # A long file playing: what the editor, drawing and ideas blocks start from in a full
+        # run (the resume steps leave it). The later blocks prepare their own.
+        long_playing = [(0, lambda: self.pl.add([long_mkv], True)), (1800, lambda: None)]
+        blocks = {
+            "base": lambda: base,                # playlist, video card, subtitles, sound, settings
+            "editor": lambda: editor,            # M6: cut, join, preview, save
+            "draw": lambda: draw,                # M7: drawings over the picture
+            "ideas": lambda: ideas,              # frame preview, A-B, per-file memory
+            "m8": lambda: m8,                    # series, skips, history, scheduler, radio, tray, file types
+            "fb1": self.fb1_steps,     # feedback 1: the time scale, screenshot colours, hints
+            "fb2": self.fb2_steps,     # feedback 2 (UI/UX council 1, stages 1 and 2)
+            "fb3": self.fb3_steps,     # release blockers: failures said, streams reconnected
+            "st1": self.st1_steps,     # stage 1: nothing slow on the GUI thread
+            "st3": self.st3_steps,     # stage 3: keyboard areas and the screen reader
+            "st4": self.st4_steps,     # stage 4: the Braun panel, an honest edit
+            "tails": self.tails_steps,     # the tails of stages 1-4
+            "fb4": self.fb4_steps,     # feedback 4 (0.11.1): the mouse, settings, the picture card
+            "upd": self.upd_steps,     # the update from the release page
+        }
+        # tests\next-run-focus (used up like next-run-exe): the quick part and only the blocks it
+        # names; empty, the quick part alone. Without it, everything.
+        focus_file = Path(self.media).parent.parent / "next-run-focus"
+        if focus_file.exists():
+            names = focus_file.read_text(encoding="utf-8").split()
+            focus_file.unlink()
+            unknown = [n for n in names if n not in blocks]
+            self.check("the focus file names known blocks", not unknown, f"unknown={unknown} known={list(blocks)}")
+            self.run_name = "+".join(["smoke"] + [n for n in blocks if n in names])
+        else:
+            names = list(blocks)
+            self.run_name = "full"
+        self.steps = list(smoke)
+        for name, make in blocks.items():
+            if name in names:
+                if self.run_name != "full" and name in ("editor", "draw", "ideas"):
+                    self.steps += long_playing
+                if self.run_name != "full" and name.startswith(("fb", "st", "tails", "upd")) and "m8" not in names:
+                    self.steps += [(0, self.s_m8_state)]
+                self.steps += make()
+        self.steps.append((0, self.s_finish))
         self._next()
+
+    def s_m8_state(self):
+        """What the later blocks find after M8 in a full run: the scheduler and the test station."""
+        self.sch = self.m8["scheduler"]
+        if self.icy is None:
+            self.s_radio_prep()
 
     def _next(self):
         if not self.steps:
@@ -1858,7 +1900,7 @@ class SelfTest(QObject):
             self.icy.stopping = True
             self.icy.shutdown()
         self.result = 1 if self.failures else 0
-        line = f"SELFCHECK RESULT {'PASS' if not self.failures else 'FAIL'} failures={self.failures}"
+        line = f"SELFCHECK RESULT {'PASS' if not self.failures else 'FAIL'} run={self.run_name} failures={self.failures}"
         print(line, flush=True)
         log.info(line)          # the built program has no console: its log is where the result is read
         self.win.close()
@@ -2787,7 +2829,7 @@ class SelfTest(QObject):
             (2500, self.until(lambda: Path(self.st("path") or "").name == "test1080.mkv", 10)),
             (300, self.s_fb3_bad_done),
             # a station that drops: reconnected, «when the list ends: shut down» does not start
-            (0, self.s_fb3_drop_prep), (3500, self.s_fb3_drop_cut), (400, lambda: setattr(self.icy, "drop", False)),
+            (0, self.s_fb3_drop_prep), (3500, self.s_fb3_drop_cut), (400, lambda: None),
             (0, self.until(lambda: any(m.startswith("The connection to the station dropped") for m in self.said[self.osd0:]), 20)),
             (300, self.s_fb3_drop_said),
             (0, self.until(lambda: self.st("path") == self.station and not self.st("eof")
@@ -3605,7 +3647,8 @@ class SelfTest(QObject):
             (400, lambda: self.s_fb4_nudge(8)), (400, self.s_fb4_still_bare),
             (0, lambda: self.s_fb4_nudge(60)), (400, self.s_fb4_woken),
             (0, lambda: self.s_fb4_button(Qt.MiddleButton)), (900, self.s_fb4_windowed),
-            (0, self.s_fb4_back), (700, self.s_fb4_backed),
+            (0, self.s_fb4_back), (700, self.until(lambda: self.st("position") < self.pos0 - 2, 3.0, 100)),
+            (0, self.s_fb4_backed),
             (0, lambda: self.click("keySettings")), (600, lambda: self.settings_page(1, "setLang")),
             (700, self.s_fb4_settings), (0, self.s_fb4_lang),
             (500, self.s_fb4_lang_menu), (500, self.s_fb4_reset), (300, self.s_fb4_reset2), (300, self.s_fb4_reset_done),
@@ -3807,6 +3850,7 @@ class SelfTest(QObject):
 
     def s_fb4_save_framed(self):
         self.ed.frags = [dict(self.ed.frags[0], start=2.0, end=4.0)]
+        self.ed._ask(self.ed.frags[0]["path"], 2.0)    # a fragment set by hand: its keyframe is not read yet
         self.ed.changed.emit()
         self.framed_out = self.out / "framed.mp4"
         self.ed.exportTo(str(self.framed_out))

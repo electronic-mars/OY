@@ -6,6 +6,9 @@ rem Results: tests\out\  (out.txt = full output, *.png = window captures, home\ 
 rem Exit code 0 = all checks passed.
 rem One run of the built program instead (after tools\build.cmd): create the empty file
 rem tests\next-run-exe. The run uses it up, so the next run tests the development code again.
+rem A quick run (about a minute) and only the blocks of the change: tests\next-run-focus with
+rem block names (base editor draw ideas m8 fb1 fb2 fb3 st1 st3 st4 tails fb4 upd), used up
+rem the same way; empty, the quick part alone. Before a release, the full run.
 rem The master screenshots instead (src\oyplayer\showcase.py): create the empty file
 rem tests\next-run-showcase, used up the same way; the captures land in tests\out\showcase.
 setlocal
