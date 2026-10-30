@@ -691,13 +691,11 @@ class SelfTest(QObject):
     def s_sub_menu(self):
         self.check("secondary subtitles selectable", self.st("sid2") is not False, f"sid2={self.st('sid2')}")
         self.check("Alt+Right delays subtitles", abs(self.st("subDelay") - 0.1) < 1e-6, f"delay={self.st('subDelay')}")
-        item = self.win.findChild(QObject, "keySubs")
-        c = item.mapToScene(QPointF(item.width() / 2, item.height() / 2))
-        QTest.mouseClick(self.win, Qt.RightButton, Qt.NoModifier, QPoint(int(c.x()), int(c.y())))
+        self.key("S", Qt.AltModifier)          # no key on the panel: Alt+S and the picture's menu
 
     def s_sub_menued(self):
         menu = self.win.findChild(QObject, "subsMenu")
-        self.check("right click on CC opens subtitle menu", menu.property("visible") is True)
+        self.check("Alt+S opens the subtitle menu", menu.property("visible") is True)
         self.shot("11_subs_menu")
         self.key("Esc")
         self.p.setSid2(-1)
@@ -2366,11 +2364,10 @@ class SelfTest(QObject):
                    if self.oklch_of(img.pixelColor(x, y))[1] > 0.08)
 
     def s_fb2_subs(self, what, lit):
-        key = self.find_item("keySubs")
-        n = self.accent_px(capture(int(self.win.winId())), key)
-        self.check(f"the subtitles key is {'lit' if lit else 'not lit'} with {what}",
-                   key.property("latched") is lit and (n > 10 if lit else n == 0),
-                   f"sid={self.st('sid')} shown={self.st('subVisible')} latched={key.property('latched')} accent pixels={n}")
+        shown = self.st("subVisible") and self.st("sid") is not False
+        self.check(f"subtitles {'on' if lit else 'off'} with {what}, and no subtitles key on the panel (the menu has them)",
+                   self.find_item("keySubs") is None and shown is lit,
+                   f"sid={self.st('sid')} shown={self.st('subVisible')}")
 
     def s_fb2_subs_pick(self):
         tracks = self.p.subTracks
@@ -3415,14 +3412,13 @@ class SelfTest(QObject):
         self.check("the volume is filled in neutral metal: the accent is only the play key and the position",
                    coloured == 0, f"coloured pixels in the volume={coloured}")
         self.p.mpv.mute = True           # the sound key latches: checked in the next step
-        gone = [n for n in ("keyEject", "keyFrame", "keyVideo") if self.find_item(n) is not None]
-        subs, prev = self.find_item("keySubs"), self.find_item("keyPrev")
-        self.check("the panel without Open, Frame and Video; subtitles only for a file that has them, "
+        gone = [n for n in ("keyEject", "keyFrame", "keyVideo", "keySubs") if self.find_item(n) is not None]
+        prev = self.find_item("keyPrev")
+        self.check("the panel without Open, Frame, Video and Subtitles (the picture's menu has them); "
                    "previous/next only with more than one file in the list",
-                   not gone and subs.isVisible() == (len(self.p.subTracks) > 0) and prev.isVisible() == (self.pl.count > 1),
-                   f"left on the panel={gone} subs shown={subs.isVisible()} tracks={len(self.p.subTracks)} "
-                   f"prev shown={prev.isVisible()} list={self.pl.count}")
-        names = ("keySettings", "keyPlay", "keyFast", "keySubs", "keySound", "keyShot", "keyEdit", "keyPrev", "keyPlaylist", "keyNext")
+                   not gone and self.find_item("keySubs") is None and prev.isVisible() == (self.pl.count > 1),
+                   f"left on the panel={gone} prev shown={prev.isVisible()} list={self.pl.count}")
+        names = ("keySettings", "keyPlay", "keyFast", "keySound", "keyShot", "keyEdit", "keyPrev", "keyPlaylist", "keyNext")
         caps = {n: self.find_item(n).property("flat") for n in names}
         self.check("every key of the panel is a rubber cap (the Braun concept)",
                    all(v is False for v in caps.values()), f"flat={caps}")
@@ -3605,7 +3601,9 @@ class SelfTest(QObject):
             (400, self.s_fb4_left), (500, self.s_fb4_paused), (0, lambda: self.settings.set("leftClick", "chrome")),
             (300, self.s_fb4_left), (900, self.s_fb4_hidden), (0, self.s_fb4_left), (900, self.s_fb4_shown),
             (0, lambda: self.settings.set("leftClick", "pause")),
-            (0, lambda: self.s_fb4_button(Qt.MiddleButton)), (900, self.s_fb4_full),
+            (0, lambda: self.s_fb4_button(Qt.MiddleButton)), (300, lambda: self.s_fb4_nudge(0)), (600, self.s_fb4_full),
+            (400, lambda: self.s_fb4_nudge(8)), (400, self.s_fb4_still_bare),
+            (0, lambda: self.s_fb4_nudge(60)), (400, self.s_fb4_woken),
             (0, lambda: self.s_fb4_button(Qt.MiddleButton)), (900, self.s_fb4_windowed),
             (0, self.s_fb4_back), (700, self.s_fb4_backed),
             (0, lambda: self.click("keySettings")), (600, lambda: self.settings_page(1, "setLang")),
@@ -3683,6 +3681,7 @@ class SelfTest(QObject):
         self.margin_at_click = (self.p.mpv["video-margin-ratio-top"], self.p.mpv["video-margin-ratio-bottom"])
         self.panels_at_click = self.win.property("chromeShown")
 
+
     def s_fb4_full(self):
         self.check("the middle button goes full screen (the default) on the bare picture: no panels, and the picture "
                    "laid out once, for full screen, at the click (no jerk)",
@@ -3691,6 +3690,21 @@ class SelfTest(QObject):
                    f"fs={self.win.property('fs')} panels={self.win.property('chromeShown')} "
                    f"at the click: margins={self.margin_at_click} panels={self.panels_at_click}")
         self.shot("fb4_05_fullscreen_bare")
+
+    def s_fb4_nudge(self, d):
+        c = self.video_point()
+        QTest.mouseMove(self.win, QPoint(c.x() + d, c.y()))
+
+    def s_fb4_still_bare(self):
+        self.check("full screen: a hand resting on the mouse (a few pixels) does not bring the panels back",
+                   self.win.property("chromeShown") is False, f"panels={self.win.property('chromeShown')}")
+
+    def s_fb4_woken(self):
+        title = self.find_item("windowTitle").parentItem()
+        self.check("a real move brings the panel; the window's keys at the top only when the pointer goes up there",
+                   self.win.property("chromeShown") is True and title.property("opacity") == 0,
+                   f"panels={self.win.property('chromeShown')} title opacity={title.property('opacity')}")
+        self.shot("fb4_09_fullscreen_woken")
 
     def s_fb4_windowed(self):
         self.check("and back to the window", self.win.property("fs") is False)

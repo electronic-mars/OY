@@ -47,6 +47,7 @@ Window {
     // narrowest window, where every key must still fit
     readonly property int edge: Theme.tier ? 24 : 12
     property bool chromeAwake: true            // fullscreen: panels shown after a mouse move
+    property real pointerY: -1                 // where the pointer is over the picture (full screen: the title bar)
     // a click on the picture (setting "leftClick" or "middleClick"): the title bar, the panel and
     // the list step aside, windowed or full screen, until the next such click (or Esc)
     property bool uiHidden: false
@@ -99,7 +100,10 @@ Window {
         else if (a === "chrome" || a === "pause") actions.run("play_pause")
         else if (a === "fullscreen") {
             quietFs = !fs
-            if (quietFs) { chromeAwake = false; sleepTimer.stop(); quietUntil = Date.now() + 1000 }
+            if (quietFs) {
+                chromeAwake = false; sleepTimer.stop(); quietUntil = Date.now() + 1000
+                videoArea.restAt = videoArea.lastGlobal       // where the hand rests
+            }
             actions.run("fullscreen")
         }
     }
@@ -274,7 +278,7 @@ Window {
             at = Qt.point(videoArea.x + videoArea.width / 2 - 125, videoArea.y + videoArea.height / 2 - 120)
         if (at) {
             menu.parent = Overlay.overlay
-            menu.x = Math.max(8, Math.min(at.x, win.width - 268))
+            menu.x = Math.max(8, Math.min(at.x, win.width - menu.rowWidth - 20))
             menu.y = Math.max(8, Math.min(at.y, win.height - menu.implicitHeight - 8))
         } else {
             menu.parent = key
@@ -283,18 +287,20 @@ Window {
         }
         menu.open()
     }
-    function openSubsMenu(at) { subsMenu.items = subsItems(); popMenu(subsMenu, ccKey, at) }
+    // the subtitles have no key on the panel: S turns them on and off, Alt+S and the picture's
+    // menu open this one
+    function openSubsMenu(at) { subsMenu.items = subsItems(); popMenu(subsMenu, null, at) }
     function openPictureMenu(at) {
         pictureMenu.items = [
-            { text: L.t.act_open_file + "…", run: () => actions.run("open_file") },
+            { text: L.t.act_open_file + "…", icon: Theme.icFolder, keys: "F2", run: () => actions.run("open_file") },
             { separator: true },
-            { text: L.t.cm_speed, enabled: player.hasFile, run: () => win.openSpeedMenu(at) },
-            { text: L.t.cm_subs, enabled: player.hasFile, run: () => win.openSubsMenu(at) },
-            { text: L.t.cm_sound, run: () => win.openAudioMenu(at) },
-            { text: L.t.act_video_panel, enabled: player.hasFile, run: () => videoPanel.open() },
+            { text: L.t.cm_speed, icon: Theme.icFastForward, keys: "Ctrl+X", enabled: player.hasFile, run: () => win.openSpeedMenu(at) },
+            { text: L.t.cm_subs, icon: Theme.icCaptions, keys: "Alt+S", enabled: player.hasFile, run: () => win.openSubsMenu(at) },
+            { text: L.t.cm_sound, icon: Theme.icVolume, keys: "Alt+A", run: () => win.openAudioMenu(at) },
+            { text: L.t.act_video_panel, icon: Theme.icVideo, keys: "Shift+V", enabled: player.hasFile, run: () => videoPanel.open() },
             { separator: true },
-            { text: L.t.cm_shot, enabled: player.hasFile, run: () => actions.run("screenshot") },
-            { text: L.t.act_file_info, enabled: player.hasFile, run: () => actions.run("file_info") }]
+            { text: L.t.cm_shot, icon: Theme.icCamera, keys: "F12", enabled: player.hasFile, run: () => actions.run("screenshot") },
+            { text: L.t.act_file_info, icon: Theme.icInfo, keys: "Alt+I", enabled: player.hasFile, run: () => actions.run("file_info") }]
         popMenu(pictureMenu, null, at)
     }
     function openAudioMenu(at) {
@@ -430,10 +436,18 @@ Window {
         onPressed: (m) => { pressAt = Qt.point(m.x, m.y); moved = false }
         // the panels wake on a real move of the pointer, not on the window changing size under
         // a still pointer (going full screen sends a move of its own)
+        // Full screen, a hand resting on the mouse (after the middle button, say) must not bring the
+        // panels back: there they wake after a deliberate move, 24 px from where the pointer rested
         property point lastGlobal
+        property point restAt
         onPositionChanged: (m) => {
             var g = mapToGlobal(m.x, m.y)
-            if (Math.abs(g.x - lastGlobal.x) + Math.abs(g.y - lastGlobal.y) > 2) win.wake()
+            win.pointerY = m.y + y
+            var far = win.fsLook ? Math.abs(g.x - restAt.x) + Math.abs(g.y - restAt.y) > 24
+                                 : Math.abs(g.x - lastGlobal.x) + Math.abs(g.y - lastGlobal.y) > 2
+            // while the window grows (the quiet second) its moves only say where the hand rests
+            if (Date.now() < win.quietUntil) restAt = g
+            else if (far) { win.wake(); restAt = g }
             lastGlobal = g
             if (pressed && !moved && !win.fs
                     && Math.abs(m.x - pressAt.x) + Math.abs(m.y - pressAt.y) > 6) {
@@ -608,9 +622,12 @@ Window {
         anchors { left: parent.left; right: parent.right; top: parent.top }
         height: win.titleH
         color: Theme.title
-        opacity: win.chromeShown ? 1 : 0
+        // full screen: the window's keys only when the pointer goes up to them (they read as
+        // marks in the picture's corner otherwise)
+        opacity: win.chromeShown && (!win.fsLook || win.pointerY < 64 || titleHover.hovered) ? 1 : 0
         visible: opacity > 0
-        Behavior on opacity { NumberAnimation { duration: 180 } }
+        // going full screen the panels vanish at once, not while the window grows
+        Behavior on opacity { enabled: win.fsPending === 0; NumberAnimation { duration: 180 } }
         Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: 1; color: Theme.line }
         HoverHandler { id: titleHover }
         DragHandler {
@@ -693,7 +710,7 @@ Window {
         height: win.panelH
         opacity: win.chromeShown ? 1 : 0
         visible: opacity > 0
-        Behavior on opacity { NumberAnimation { duration: 180 } }
+        Behavior on opacity { enabled: win.fsPending === 0; NumberAnimation { duration: 180 } }
         color: Theme.deck
         Rectangle { anchors { left: parent.left; right: parent.right; top: parent.top } height: 1; color: Theme.rule }
         Rectangle { anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: 1 } height: 1
@@ -782,15 +799,6 @@ Window {
                               + L.t.t_speed_menu
                          anchors.verticalCenter: parent.verticalCenter
                          onClicked: actions.run("fast_play") }
-                // only for a file that has subtitles (S, Shift+S and the picture's menu load them)
-                KeyCap { id: ccKey; objectName: "keySubs"; glyph: Theme.icCaptions
-                         visible: player.subTracks.length > 0
-                         second: true; held: subsMenu.visible
-                         latched: player.subVisible && player.sid !== false
-                         tip: L.t.t_subs
-                         onRightClicked: win.openSubsMenu()
-                         anchors.verticalCenter: parent.verticalCenter
-                         onClicked: actions.run("subtitles") }
                 KeyCap { id: soundKey; objectName: "keySound"
                          second: true; held: audioMenu.visible
                          onRightClicked: win.openAudioMenu()
