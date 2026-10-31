@@ -54,7 +54,8 @@ UNUSED_DLLS = ("Qt6WebEngine", "Qt6WebView", "Qt6WebChannel", "Qt6WebSockets", "
                # Python's own libssl-3.dll and libcrypto-3.dll stay
                "libcrypto-3-x64", "libssl-3-x64")
 # Qt plugins and data nothing here uses: the QML debugger, Qt's translations (no Qt dialog is
-# shown; the interface carries its own words, i18n.py), Direct2D (the player forces OpenGL), the
+# shown; the interface carries its own words, i18n.py), the Direct2D platform (the window is drawn
+# with Direct3D 11 or OpenGL, video.py), the
 # OpenSSL TLS backend, the virtual keyboard, picture formats other than PNG, JPEG, ICO, SVG
 UNUSED_PATHS = ("PySide6/translations/", "plugins/qmltooling/", "plugins/platforms/qdirect2d",
                 "plugins/tls/qopensslbackend", "plugins/platforminputcontexts/qtvirtualkeyboard",

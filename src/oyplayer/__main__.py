@@ -16,6 +16,12 @@ else:
 # Python slots run inside Qt's render pass; with the threaded render loop the render
 # thread and the GUI thread deadlock on the GIL (measured: a silent hang).
 os.environ["QSG_RENDER_LOOP"] = "basic"
+# Direct3D 11 (video.py): Qt waits on DXGI's frame latency object before each frame, and across
+# a full-screen switch it is not signalled: Qt sat out its 1 s timeout (2 of 4 switches, measured)
+os.environ["QT_D3D_MAX_FRAME_LATENCY"] = "0"
+# The flip-model swap chain leaves a grown window's old frame unscaled in its corner on black
+# until the next present; the legacy blit model does it less (curtain.py covers the rest)
+os.environ["QT_D3D_NO_FLIP"] = "1"
 # Menus and popups are drawn entirely by us; the Basic style is the one that lets them be.
 os.environ["QT_QUICK_CONTROLS_STYLE"] = "Basic"
 
@@ -135,7 +141,6 @@ def main(argv):
     # the showcase (master screenshots) runs under the self-test's rules: monitor 3, silent, no focus
     showcase = len(argv) >= 4 and argv[1] == "--showcase"
     selftest = len(argv) >= 4 and argv[1] == "--selftest" or showcase
-    QQuickWindow.setGraphicsApi(QSGRendererInterface.GraphicsApi.OpenGL)
     app = QApplication(argv)
     app.setApplicationName("OY Player")
     app.setOrganizationName("oyplayer")
@@ -164,7 +169,12 @@ def main(argv):
     from .radio import Radio
     from .scheduler import Scheduler
     from .tray import Tray
-    from .video import VideoUnderlay
+    from .curtain import Curtain
+    from .video import D3DUnderlay, VideoUnderlay, dx_interop
+    # OY_VIDEO=gl: the OpenGL window, as on a machine without the interop (self-test comparisons)
+    d3d = os.environ.get("OY_VIDEO") != "gl" and dx_interop()
+    QQuickWindow.setGraphicsApi(QSGRendererInterface.GraphicsApi.Direct3D11 if d3d
+                                else QSGRendererInterface.GraphicsApi.OpenGL)
 
     def mpv_log(level, component, text):
         if level in ("fatal", "error", "warn"):
@@ -262,10 +272,14 @@ def main(argv):
     win.installEventFilter(actions)
     place_on_screen(app, win, os.environ.get("OY_SCREEN") or ("3" if info.selftest else ""))
     win.show()
-    underlay = VideoUnderlay(win, core)
+    log.info("video through %s", "Direct3D 11" if d3d else "OpenGL")
+    win.setProperty("videoD3D", d3d)
+    underlay = (D3DUnderlay if d3d else VideoUnderlay)(win, core)
+    curtain = Curtain(win)
+    ctx.setContextProperty("curtain", curtain)
     tray = Tray(win, actions, player, app.windowIcon())
     keys = MediaKeys(win, actions)
-    snap = SnapKey(win)  # noqa: F841 - the filter lives as long as the window
+    snap = SnapKey(win, cover_fix=not d3d)  # noqa: F841 - the filter lives as long as the window
 
     def on_window_setting(key):
         if key in (None, "tray"):

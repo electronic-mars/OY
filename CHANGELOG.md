@@ -3,6 +3,20 @@
 All notable changes to OY Player. Versions follow [Semantic Versioning](https://semver.org/).
 Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitHub release of the same name.
 
+## [Unreleased]
+
+### Fixed
+- After the window changed size the first frame of the video was drawn at the old size in the lower left corner; a paused video stayed so, shifted and small, in full screen. The picture is now drawn at the window's real size from the first frame.
+- Going full screen, the panel flashed across the bottom of the grown window: it faded out instead of going at once. It now goes at once.
+- In and out of full screen the panels and the title bar step aside at the click and stay away until the window has finished changing: Windows grows it in more than one step, and the panel rode up the middle of the screen. Leaving, they come back at once in the very frame the window is small again. The picture follows the window's real size. Esc and the title bar key leave the same way.
+- No Windows animation when the window changes: going full screen and back it blended the old and new window over what lay under it and held a dark frame. The window now changes at once.
+- For two seconds after the middle button even a real move of the mouse does not bring the panels back.
+- Going full screen the window seemed to jump into the upper left corner first, and leaving it the big picture showed cut by the small window for a moment: Windows shows a window that changed size once with its old picture until the new one is drawn. The screen is now held still for that moment (about 40 ms), so only the window before and after is ever seen. The taskbar and other always-on-top bars step back under it instead of standing over the picture for a frame.
+
+### Changed
+- The window is drawn with Direct3D 11, as Windows' own programs are, instead of OpenGL: full screen in and out is quicker, never blacks the screen out, and screen recorders see it. A computer whose video driver cannot hand mpv's picture to Direct3D keeps the OpenGL window; there a full-screen window is 1 px taller than its monitor, which keeps the video card's OpenGL driver from taking the picture past the desktop (a black screen for a moment on each switch, black in screen recorders), and has no Windows outline or rounded corners.
+- A picture smaller than the window's least width grows to it when a file opens: edge to edge with the panel, no black bars at the sides.
+
 ## [0.12.0] - 2026-10-30
 
 ### Fixed

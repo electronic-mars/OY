@@ -51,13 +51,27 @@ Window {
     // a click on the picture (setting "leftClick" or "middleClick"): the title bar, the panel and
     // the list step aside, windowed or full screen, until the next such click (or Esc)
     property bool uiHidden: false
-    // Going in or out of full screen, the window first changes size and only then says it is full
-    // screen: laid out by where it is going (fsPending), the picture is sized once, not twice
-    // (the owner saw it jerk), and the panels go before the window grows
+    // Going in or out of full screen the panels and the title bar step aside at the click and stay
+    // away for the whole change: Windows grows the window in more than one step, and panels kept
+    // until it was full size rode up the middle of the screen (the owner). The picture's layout
+    // follows the window's real size, not Windows' «full screen» state (reported before or after
+    // the size, by direction).
     property int fsPending: 0                            // 1 going full screen, -1 leaving it
-    readonly property bool fsLook: fsPending !== 0 ? fsPending > 0 : fs
-    Timer { id: fsSettle; interval: 1500; onTriggered: win.fsPending = 0 }   // a change that never came
-    readonly property bool chromeShown: (!fsLook || chromeAwake) && !uiHidden
+    // (a window covering its monitor is 1 px taller than it: snap.py)
+    readonly property bool fullSized: width >= screen.width && height >= screen.height
+    readonly property bool fsLook: fsPending !== 0 ? fullSized : fs
+    // The panels' fade is off for the whole change, switched before fsPending and back after it:
+    // a Behavior's «enabled» bound to fsPending itself may update after the opacity it guards, and
+    // then the panel faded out over the grown window (the owner's phone videos)
+    property bool fsInstant: false
+    // fsPending first: leaving, the panels come back in the very frame the window shrinks, not
+    // fading in over a window that has already changed (the owner saw it as a second jerk)
+    function fsSettled() { fsPending = 0; fsInstant = false }
+    function fsCheck() {
+        if ((fsPending > 0 && fs && fullSized) || (fsPending < 0 && !fs && !fullSized)) fsSettled()
+    }
+    Timer { id: fsSettle; interval: 1500; onTriggered: win.fsSettled() }   // a change that never came
+    readonly property bool chromeShown: fsPending === 0 && (!fsLook || chromeAwake) && !uiHidden
     readonly property bool bare: fsLook || uiHidden    // the picture takes the whole window
     property bool playlistShown: false
     // The area the keyboard works in: "list" (the playlist, any tab), "strip" (the edit's
@@ -66,7 +80,11 @@ Window {
     // the same path as the open menu's keys). An area that goes away gives the keys back.
     property string area: ""
     onPlaylistShownChanged: if (!playlistShown && area === "list") area = ""
-    onChromeShownChanged: if (!chromeShown && area === "list") area = ""
+    onChromeShownChanged: {
+        if (fs || fsPending || width >= screen.width)
+            console.info("panels", chromeShown ? "shown" : "hidden", "fs", fs, "pending", fsPending, "size", width + "x" + height)
+        if (!chromeShown && area === "list") area = ""
+    }
     Connections { target: editor; function onChanged() { if (!editor.active && win.area === "strip") win.area = "" } }
     // a row holds its frame and a whole file name; one width whatever the window's (the window's
     // own width is set from it by Alt+1 and the fit to a picture)
@@ -78,18 +96,21 @@ Window {
         if (bare) player.setVideoMargins(0, 0, 0)
         else player.setVideoMargins(titleH / height, panelH / height, sideW / width)
     }
-    onHeightChanged: updateMargins()
-    onWidthChanged: updateMargins()
+    onHeightChanged: { fsCheck(); updateMargins() }
+    onWidthChanged: { fsCheck(); updateMargins() }
     onSideWChanged: updateMargins()
     onPanelHChanged: updateMargins()
+    onBareChanged: updateMargins()
     // full screen from the mouse (the middle button, a double click) opens on the bare picture;
     // from a key or the title bar the panels show for a moment, as they always did
     property bool quietFs: false
     property real quietUntil: 0                          // the window's own moves while it grows are no wake
     onFsChanged: {
-        fsPending = 0
+        fsCheck()
         updateMargins()
-        if (fs && quietFs) { sleepTimer.stop(); chromeAwake = false } else wake()
+        // leaving needs no wake: the window shows its panels anyway, and a wake while it is still
+        // full size would show them there
+        if (fs && quietFs) { sleepTimer.stop(); chromeAwake = false } else if (fs) wake()
         quietFs = false
     }
     onUiHiddenChanged: updateMargins()
@@ -101,7 +122,7 @@ Window {
         else if (a === "fullscreen") {
             quietFs = !fs
             if (quietFs) {
-                chromeAwake = false; sleepTimer.stop(); quietUntil = Date.now() + 1000
+                chromeAwake = false; sleepTimer.stop(); quietUntil = Date.now() + 2000
                 videoArea.restAt = videoArea.lastGlobal       // where the hand rests
             }
             actions.run("fullscreen")
@@ -110,9 +131,11 @@ Window {
     Component.onCompleted: updateMargins()
 
     function toggleFullscreen() {
+        fsInstant = true
         fsPending = fs ? -1 : 1
         fsSettle.restart()
         updateMargins()
+        curtain.cover(!fs)      // the screen held still until the window has its new frame (curtain.py)
         if (fs) showNormal(); else showFullScreen()
     }
     // one sign for «a menu or card is open»: Esc closes it first, the fullscreen panels stay
@@ -146,7 +169,7 @@ Window {
             if (win.popupOpen) win.popups.forEach(p => p.close())
             else if (scheduler.countdown > 0) scheduler.abort()
             else if (win.uiHidden) win.uiHidden = false
-            else if (win.fs) win.showNormal()
+            else if (win.fs) win.toggleFullscreen()
             else if (editor.active && win.drawTool !== "select") win.drawTool = "select"   // a drawing tool first
             else if (editor.active) editor.close()
             else win.close()
@@ -627,7 +650,7 @@ Window {
         opacity: win.chromeShown && (!win.fsLook || win.pointerY < 64 || titleHover.hovered) ? 1 : 0
         visible: opacity > 0
         // going full screen the panels vanish at once, not while the window grows
-        Behavior on opacity { enabled: win.fsPending === 0; NumberAnimation { duration: 180 } }
+        Behavior on opacity { enabled: !win.fsInstant; NumberAnimation { duration: 180 } }
         Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: 1; color: Theme.line }
         HoverHandler { id: titleHover }
         DragHandler {
@@ -682,7 +705,7 @@ Window {
             IconButton { width: 46; height: win.titleH; radius: 0
                          objectName: "keyMax"; glyph: win.visibility === Window.Maximized || win.fs ? Theme.icRestore : Theme.icMax
                          tip: win.fs ? L.t.t_window : win.visibility === Window.Maximized ? L.t.t_restore : L.t.t_maximize
-                         onClicked: win.fs ? win.showNormal() : (win.visibility === Window.Maximized ? win.showNormal() : win.showMaximized()) }
+                         onClicked: win.fs ? win.toggleFullscreen() : (win.visibility === Window.Maximized ? win.showNormal() : win.showMaximized()) }
             IconButton { width: 46; height: win.titleH; radius: 0
                          glyph: Theme.icClose; danger: true; tip: L.t.t_close; onClicked: win.close() }
         }
@@ -710,7 +733,7 @@ Window {
         height: win.panelH
         opacity: win.chromeShown ? 1 : 0
         visible: opacity > 0
-        Behavior on opacity { enabled: win.fsPending === 0; NumberAnimation { duration: 180 } }
+        Behavior on opacity { enabled: !win.fsInstant; NumberAnimation { duration: 180 } }
         color: Theme.deck
         Rectangle { anchors { left: parent.left; right: parent.right; top: parent.top } height: 1; color: Theme.rule }
         Rectangle { anchors { left: parent.left; right: parent.right; top: parent.top; topMargin: 1 } height: 1
@@ -912,8 +935,12 @@ Window {
                 // must not jump to each file's size.
                 if (settings.values.fitWindow && !win.fs && win.visibility !== Window.Maximized && !editor.active) {
                     var area = app.workArea(win), dpr = area[4]
-                    var f = Math.min(1, (area[2] - 40 - win.sideW) * dpr / player.videoW,
+                    var fits = Math.min((area[2] - 40 - win.sideW) * dpr / player.videoW,
                                         (area[3] - 40 - win.titleH - win.panelH) * dpr / player.videoH)
+                    // its own size, but no narrower than the window can be: a small picture grows to
+                    // the window's least width, edge to edge with the panel, instead of standing
+                    // between black bars (as long as it fits the screen)
+                    var f = Math.min(fits, Math.max(1, (win.minimumWidth - win.sideW) * dpr / player.videoW))
                     win.scaleTo(f, true)
                     win.keepOnScreen()
                     console.info("fit", player.videoW + "x" + player.videoH, "area", area, "f", f.toFixed(3),

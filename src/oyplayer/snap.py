@@ -13,8 +13,19 @@ from PySide6.QtCore import QAbstractNativeEventFilter, QCoreApplication, QMetaOb
 WM_NCHITTEST, WM_NCMOUSEMOVE, WM_NCMOUSELEAVE = 0x0084, 0x00A0, 0x02A2
 WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCLBUTTONDBLCLK = 0x00A1, 0x00A2, 0x00A3
 HTMAXBUTTON = 9
+WM_WINDOWPOSCHANGING, SWP_NOSIZE, MONITOR_DEFAULTTONEAREST = 0x0046, 0x0001, 2
 GWL_STYLE, WS_MAXIMIZEBOX = -16, 0x00010000
 TME_LEAVE, TME_NONCLIENT = 0x02, 0x10
+
+
+class WINDOWPOS(ctypes.Structure):
+    _fields_ = [("hwnd", wintypes.HWND), ("hwndInsertAfter", wintypes.HWND), ("x", ctypes.c_int),
+                ("y", ctypes.c_int), ("cx", ctypes.c_int), ("cy", ctypes.c_int), ("flags", wintypes.UINT)]
+
+
+class MONITORINFO(ctypes.Structure):
+    _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT), ("rcWork", wintypes.RECT),
+                ("dwFlags", wintypes.DWORD)]
 
 
 class TRACKMOUSEEVENT(ctypes.Structure):
@@ -27,25 +38,66 @@ user32.ScreenToClient.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.POINT)]
 user32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
 user32.SetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int, wintypes.LONG]
 user32.TrackMouseEvent.argtypes = [ctypes.POINTER(TRACKMOUSEEVENT)]
+user32.MonitorFromRect.restype = wintypes.HMONITOR
+user32.MonitorFromRect.argtypes = [ctypes.POINTER(wintypes.RECT), wintypes.DWORD]
+user32.GetMonitorInfoW.argtypes = [wintypes.HMONITOR, ctypes.POINTER(MONITORINFO)]
 dwmapi = ctypes.WinDLL("dwmapi")
-DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND = 33, 2
+DWMWA_TRANSITIONS_FORCEDISABLED = 3
+DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND, DWMWCP_ROUND = 33, 1, 2
+DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE, DWMWA_COLOR_DEFAULT = 34, 0xFFFFFFFE, 0xFFFFFFFF
 
 
-def round_corners(hwnd):
+def no_transitions(hwnd):
+    """No Windows animation when the window changes size or state: going full screen it blended
+    the old and the new window over what lies under it, then held a dark frame (the owner's phone
+    videos). A player's window changes at once."""
+    off = ctypes.c_int(1)
+    return dwmapi.DwmSetWindowAttribute(wintypes.HWND(hwnd), DWMWA_TRANSITIONS_FORCEDISABLED,
+                                        ctypes.byref(off), ctypes.sizeof(off)) == 0
+
+
+def round_corners(hwnd, on=True):
     """Windows 11 rounds the frameless window's corners as its own (not when maximized or
-    fullscreen), the way the panel's keys and cards are rounded. Older Windows ignores it."""
-    pref = ctypes.c_int(DWMWCP_ROUND)
+    fullscreen), the way the panel's keys and cards are rounded, and draws its thin outline.
+    Both off for a window past its monitor (past_monitor): Windows leaves them off only for an
+    exact cover, and the outline showed round the black of full screen. Older Windows ignores it."""
+    pref = ctypes.c_int(DWMWCP_ROUND if on else DWMWCP_DONOTROUND)
+    color = wintypes.DWORD(DWMWA_COLOR_DEFAULT if on else DWMWA_COLOR_NONE)
+    outline = dwmapi.DwmSetWindowAttribute(wintypes.HWND(hwnd), DWMWA_BORDER_COLOR, ctypes.byref(color),
+                                           ctypes.sizeof(color))
     return dwmapi.DwmSetWindowAttribute(wintypes.HWND(hwnd), DWMWA_WINDOW_CORNER_PREFERENCE,
-                                        ctypes.byref(pref), ctypes.sizeof(pref)) == 0
+                                        ctypes.byref(pref), ctypes.sizeof(pref)) == 0 and outline == 0
+
+
+def past_monitor(wp):
+    """A window about to cover its monitor exactly (full screen) is made 1 px taller, its last row
+    past the bottom edge. NVIDIA's OpenGL driver shows such an exact window past the desktop
+    compositor: each switch blacked the screen out for a moment, and screen recorders saw only
+    black for as long as it lasted (the owner's OBS recording beside another player). A border
+    did not help: Qt 6 puts it outside the screen and the picture still covers it exactly.
+    Only for the OpenGL window (video.py): a Direct3D window covers its monitor exactly."""
+    if wp.flags & SWP_NOSIZE:
+        return None
+    r = wintypes.RECT(wp.x, wp.y, wp.x + wp.cx, wp.y + wp.cy)
+    mi = MONITORINFO(ctypes.sizeof(MONITORINFO))
+    user32.GetMonitorInfoW(user32.MonitorFromRect(ctypes.byref(r), MONITOR_DEFAULTTONEAREST), ctypes.byref(mi))
+    m = mi.rcMonitor
+    if (wp.x, wp.y, wp.x + wp.cx, wp.y + wp.cy) == (m.left, m.top, m.right, m.bottom):
+        wp.cy += 1
+        return True
+    return False
 
 
 class SnapKey(QAbstractNativeEventFilter):
-    def __init__(self, win):
+    def __init__(self, win, cover_fix):
         super().__init__()
         self.win = win
+        self.cover_fix = cover_fix  # past_monitor for the OpenGL window
         self.hwnd = int(win.winId())
         self.key = win.findChild(QObject, "keyMax")
+        self.past = False           # the window is past its monitor (full screen): no outline, no corners
         round_corners(self.hwnd)
+        no_transitions(self.hwnd)
         QCoreApplication.instance().installNativeEventFilter(self)
 
     def _maxbox(self):
@@ -74,7 +126,13 @@ class SnapKey(QAbstractNativeEventFilter):
         if msg.hWnd != self.hwnd:
             return False, 0
         m, on_key = msg.message, msg.wParam == HTMAXBUTTON
-        if m == WM_NCHITTEST:
+        if m == WM_WINDOWPOSCHANGING and self.cover_fix:
+            past = past_monitor(WINDOWPOS.from_address(msg.lParam))
+            if past is not None and past != self.past:
+                self.past = past
+                # Windows answers no read of the outline: what was set is kept on the window (selftest)
+                self.win.setProperty("outlineOff", round_corners(self.hwnd, not past) and past)
+        elif m == WM_NCHITTEST:
             over = self._over(msg.lParam)
             self._hot(over)
             if over:

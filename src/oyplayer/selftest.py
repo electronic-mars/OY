@@ -5,6 +5,7 @@ user's keyboard reaches, so a passing run means the path people use works. Every
 logs a SELFCHECK line; captures are taken with PrintWindow (what the compositor shows).
 """
 import ctypes
+from ctypes import wintypes
 import json
 import math
 import os
@@ -3638,15 +3639,28 @@ class SelfTest(QObject):
     def fb4_steps(self):
         return [
             (0, self.s_fb4_list_one), (1500, lambda: self.pl.add([self.medias[-1]], True)), (1500, self.s_fb4_list_one_chk),
+            (0, lambda: self.show_list(False)), (300, lambda: self.pl.add([str(Path(self.media).parent / "test_long.mkv")], True)),
+            # the picture's place is known once mpv has drawn the opened file
+            (1800, self.until(lambda: "ml" in (self.st("osd") or {}), 3, 100)), (0, self.s_fb4_fit),
             (0, self.s_fb4_prep), (1500, lambda: self.key("V", Qt.ShiftModifier)), (600, self.s_fb4_rail),
             (400, self.s_fb4_railed), (0, lambda: self.key("Esc")),
             (400, self.s_fb4_left), (500, self.s_fb4_paused), (0, lambda: self.settings.set("leftClick", "chrome")),
             (300, self.s_fb4_left), (900, self.s_fb4_hidden), (0, self.s_fb4_left), (900, self.s_fb4_shown),
             (0, lambda: self.settings.set("leftClick", "pause")),
-            (0, lambda: self.s_fb4_button(Qt.MiddleButton)), (300, lambda: self.s_fb4_nudge(0)), (600, self.s_fb4_full),
-            (400, lambda: self.s_fb4_nudge(8)), (400, self.s_fb4_still_bare),
-            (0, lambda: self.s_fb4_nudge(60)), (400, self.s_fb4_woken),
+            (0, lambda: setattr(self.p.mpv, "pause", True)),
+            (300, lambda: self.s_fb4_button(Qt.MiddleButton)), (300, lambda: self.s_fb4_nudge(0)), (600, self.s_fb4_full),
+            # a real move inside the two quiet seconds; past them, a hand resting there (8 px), then a move
+            (0, self.s_fb4_quiet_move), (300, self.s_fb4_quiet),
+            (0, self.until(lambda: time.monotonic() - self.click_t > 2.2, 3, 20)),
+            (0, lambda: self.s_fb4_nudge(68)), (400, self.s_fb4_still_bare),
+            (0, lambda: self.s_fb4_nudge(120)), (400, self.s_fb4_woken),
             (0, lambda: self.s_fb4_button(Qt.MiddleButton)), (900, self.s_fb4_windowed),
+            # leaving from the bare picture: no full-screen frame with the panels
+            (0, self.s_fb4_watch_panels), (0, lambda: self.s_fb4_button(Qt.MiddleButton)),
+            (900, lambda: self.s_fb4_button(Qt.MiddleButton)), (900, self.s_fb4_left_bare),
+            # every frame Windows composes, in and out: none of neither state (the owner's slow-motion videos)
+            (0, self.s_fb4_cap_start), (300, lambda: self.s_fb4_button(Qt.MiddleButton)),
+            (900, lambda: self.s_fb4_button(Qt.MiddleButton)), (900, self.s_fb4_cap_check),
             (0, self.s_fb4_back), (700, self.until(lambda: self.st("position") < self.pos0 - 2, 3.0, 100)),
             (0, self.s_fb4_backed),
             (0, lambda: self.click("keySettings")), (600, lambda: self.settings_page(1, "setLang")),
@@ -3665,6 +3679,12 @@ class SelfTest(QObject):
     def s_fb4_list_one(self):
         self.settings.set("openAdds", self.list_default)
         self.pl.add([self.media], True)
+
+    def s_fb4_fit(self):
+        osd = self.st("osd") or {}
+        self.check("a picture narrower than the window's least width grows to it: edge to edge with the panel, no side bars",
+                   self.win.width() == self.win.property("minimumWidth") and osd.get("ml", 9) <= 1 and osd.get("mr", 9) <= 1,
+                   f"window={self.win.width()}x{self.win.height()} bars left={osd.get('ml')} right={osd.get('mr')}")
 
     def s_fb4_list_one_chk(self):
         clear = self.find_item("plClear")
@@ -3719,20 +3739,46 @@ class SelfTest(QObject):
                    and self.win.findChild(QObject, "panel").property("visible") is True)
 
     def s_fb4_button(self, button):
+        self.click_t = time.monotonic()
         QTest.mouseClick(self.win, button, Qt.NoModifier, self.video_point())
         # at once, before the window has grown: the picture is already laid out for full screen
         self.margin_at_click = (self.p.mpv["video-margin-ratio-top"], self.p.mpv["video-margin-ratio-bottom"])
         self.panels_at_click = self.win.property("chromeShown")
+        # the panel and the title bar gone at once, not fading out over the window as it grows
+        self.opacity_at_click = (self.find_item("panel").opacity(), self.find_item("windowTitle").parentItem().opacity())
 
 
     def s_fb4_full(self):
         self.check("the middle button goes full screen (the default) on the bare picture: no panels, and the picture "
                    "laid out once, for full screen, at the click (no jerk)",
                    self.win.property("fs") is True and self.win.property("chromeShown") is False
-                   and self.margin_at_click == (0.0, 0.0) and self.panels_at_click is False,
+                   and self.margin_at_click == (0.0, 0.0) and self.panels_at_click is False
+                   and self.opacity_at_click == (0.0, 0.0),
                    f"fs={self.win.property('fs')} panels={self.win.property('chromeShown')} "
-                   f"at the click: margins={self.margin_at_click} panels={self.panels_at_click}")
+                   f"at the click: margins={self.margin_at_click} panels={self.panels_at_click} "
+                   f"opacity (panel, title)={self.opacity_at_click}")
         self.shot("fb4_05_fullscreen_bare")
+        r = wintypes.RECT()
+        ctypes.windll.user32.GetWindowRect(wintypes.HWND(int(self.win.winId())), ctypes.byref(r))
+        g, dpr = self.win.screen().geometry(), self.win.screen().devicePixelRatio()
+        mon = (round(g.width() * dpr), round(g.height() * dpr))
+        if self.win.property("videoD3D"):
+            self.check("full screen through Direct3D covers the monitor exactly (Windows draws no outline then)",
+                       (r.right - r.left, r.bottom - r.top) == mon,
+                       f"window={r.right - r.left}x{r.bottom - r.top} monitor={mon[0]}x{mon[1]}")
+        else:
+            self.check("full screen through OpenGL is 1 px taller than the monitor: never an exact cover, which "
+                       "NVIDIA's OpenGL takes past the desktop (a blackout, black in screen capture)",
+                       (r.right - r.left, r.bottom - r.top) == (mon[0], mon[1] + 1),
+                       f"window={r.right - r.left}x{r.bottom - r.top} monitor={mon[0]}x{mon[1]}")
+            self.check("full screen has no Windows outline round the black, nor rounded corners (switched off, accepted)",
+                       self.win.property("outlineOff") is True, f"outlineOff={self.win.property('outlineOff')}")
+        # paused, one frame is drawn after the window grows: it must be drawn at the new size
+        osd, dpr = self.st("osd") or {}, self.win.effectiveDevicePixelRatio()
+        want = (round(self.win.width() * dpr), round(self.win.height() * dpr))
+        self.check("a paused picture is drawn at the full screen's size, not the window's it had (the owner's screenshots)",
+                   self.st("paused") is True and (osd.get("w"), osd.get("h")) == want,
+                   f"paused={self.st('paused')} drawn={osd.get('w')}x{osd.get('h')} window={want[0]}x{want[1]}")
 
     def s_fb4_nudge(self, d):
         c = self.video_point()
@@ -3749,8 +3795,61 @@ class SelfTest(QObject):
                    f"panels={self.win.property('chromeShown')} title opacity={title.property('opacity')}")
         self.shot("fb4_09_fullscreen_woken")
 
+    def s_fb4_quiet_move(self):
+        self.quiet_move_at = time.monotonic() - self.click_t
+        self.s_fb4_nudge(60)
+
+    def s_fb4_quiet(self):
+        self.check("for two seconds after the middle button even a real move does not bring the panels",
+                   self.win.property("chromeShown") is False and self.quiet_move_at < 2.0,
+                   f"panels={self.win.property('chromeShown')} moved at {self.quiet_move_at:.2f} s")
+
+    def s_fb4_watch_panels(self):
+        self.panel_changes = []
+        # (panels shown, the window still at the screen's full size) as each change happens
+        self.win.chromeShownChanged.connect(lambda: self.panel_changes.append(
+            (self.win.property("chromeShown"), self.win.property("fullSized"))))
+        # and how visible the panel is a moment after it comes back: at once, not fading in
+        self.panel_back = None
+        self.win.chromeShownChanged.connect(lambda: QTimer.singleShot(
+            40, lambda: setattr(self, "panel_back", self.find_item("panel").opacity())))
+
     def s_fb4_windowed(self):
-        self.check("and back to the window", self.win.property("fs") is False)
+        self.check("and back to the window, with its outline and round corners again",
+                   self.win.property("fs") is False
+                   and (self.win.property("videoD3D") or self.win.property("outlineOff") is False),
+                   f"outlineOff={self.win.property('outlineOff')}")
+
+    def s_fb4_cap_start(self):
+        # Desktop Duplication in a process of its own, so as not to slow the window it watches;
+        # the built program carries no Python to run it
+        self.cap = None
+        if getattr(sys, "frozen", False):
+            return
+        self.p.mpv.pause = True     # a still picture: each composed frame is one state or a glitch
+        self.cap = subprocess.Popen([sys.executable, "-m", "oyplayer.framecap", "DISPLAY3", str(self.out)],
+                                    cwd=str(Path(__file__).resolve().parents[1]), stdin=subprocess.PIPE,
+                                    stdout=subprocess.PIPE, text=True)
+        self.cap.stdout.readline()  # «ready»
+
+    def s_fb4_cap_check(self):
+        if self.cap is None:
+            print("  (the composed frames are not watched in the built program)")
+            return
+        out, _ = self.cap.communicate("stop\n", timeout=30)
+        res = json.loads(out.strip().splitlines()[-1])
+        self.check("in and out of full screen Windows composes no frame of neither state: no old picture in the "
+                   "corner of the grown window, nor a big one cut by the small window (framecap.png if any)",
+                   res["glitches"] == [] and res["states"] >= 2,
+                   f"frames={res['frames']} states={res['states']} glitches at {res['glitches']} s")
+
+    def s_fb4_left_bare(self):
+        self.check("in and out of full screen the panels step aside at the click, before the window grows, and come "
+                   "back at once once it is small again",
+                   self.panel_changes == [(False, False), (True, False)] and self.panel_back == 1.0
+                   and self.win.property("fs") is False and self.win.property("chromeShown") is True,
+                   f"panels changed (shown, full size)={self.panel_changes} panel 40 ms after={self.panel_back} "
+                   f"fs={self.win.property('fs')} panels={self.win.property('chromeShown')}")
 
     def s_fb4_back(self):
         self.p.seek(10.0)
