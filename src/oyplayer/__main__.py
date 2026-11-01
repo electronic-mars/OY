@@ -207,6 +207,8 @@ def main(argv):
     server = instance.Server()
     from .updater import Updater
     updater = Updater(busy=lambda: editor.exporting)   # quitting would cut a save short
+    from .skins import Skins
+    skins = Skins(settings)
 
     def on_setting(key):
         apply(settings, key, core, actions)
@@ -256,6 +258,7 @@ def main(argv):
     ctx.setContextProperty("scheduler", scheduler)
     ctx.setContextProperty("i18n", lang)
     ctx.setContextProperty("updater", updater)
+    ctx.setContextProperty("skins", skins)
     engine.addImageProvider("preview", preview.provider)
     from PySide6.QtGui import QFontDatabase
     for font in (PKG / "fonts").glob("*.ttf"):      # IBM Plex Mono: the scale, numbers and lengths
@@ -310,7 +313,7 @@ def main(argv):
         from .selftest import SelfTest
         test = SelfTest(app, win, player, playlist, actions, argv[2:], settings, editor, preview,
                         m8=dict(autoskip=autoskip, radio=radio, scheduler=scheduler, tray=tray,
-                                keys=keys, info=info, history=player.history, updater=updater))
+                                keys=keys, info=info, history=player.history, updater=updater, skins=skins))
         underlay.ready.connect(test.start)
     elif files:
         underlay.ready.connect(lambda: playlist.add(files, True))

@@ -5,6 +5,22 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-01
+
+### Added
+- Skins. Settings has a Skins section with a card for each skin showing its panel: Default, Classic (the earlier look), Deck, Studio and Switcher. A skin is a sealed, signed `.oyskin` file; a damaged or changed file is skipped and never stops the player.
+- The play key is the same in every skin: graphite lit from behind, its rim in the accent.
+- Drawings have three line widths, thin, medium and thick, kept in the saved video too.
+- Five inks for drawings: white, yellow, orange, blue and red.
+- The chosen drawing shows its name and times on a plate over it; a rectangle's corners and an arrow's ends can be dragged.
+- While editing, the title bar shows the picture's size and frame rate, and a Playlist key with the number of files.
+- A right click on the time display copies the time shown.
+
+### Changed
+- The editor is laid out anew. The drawing tools sit over the middle of the picture. Up to six drawings each get a track of their own, named after the drawing with a dot of its ink; a bar is an outline in the drawing's ink with grips at its ends and its times inside. Over the scale the chosen drawing's times read «0:32.0 – 0:36.0 (4.0 s)».
+- The editor's strip: the in, cut, out and delete keys are one capsule; the length with the number of fragments, and the encoding, are in frames of their own; «Result» has an eye. The separate Close key is gone: the × on the EDITING badge and Esc close the editor.
+- While editing, the scheduler and always on top are in the title bar.
+
 ### Fixed
 - After the window changed size the first frame of the video was drawn at the old size in the lower left corner; a paused video stayed so, shifted and small, in full screen. The picture is now drawn at the window's real size from the first frame.
 - Going full screen, the panel flashed across the bottom of the grown window: it faded out instead of going at once. It now goes at once.
@@ -76,7 +92,7 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 First public preview.
 
 ### Player
-- Plays local files and streams through libmpv with hardware decoding; a compact window in a Braun style with a key for every command.
+- Plays local files and streams through libmpv with hardware decoding; a compact window in a hardware style with a key for every command.
 - Playlist with next episodes found automatically, thumbnails, history, A-B repeat, frame preview over the seek bar, audio track, subtitles and volume remembered per file.
 - Skipping openings and credits, a scheduler (pause, close, sleep, shut down), internet radio from `.lau` station files with stream recording, one instance, tray icon, media keys, file types registered on request.
 - Picture card (aspect, zoom, rotation, colour), subtitle and sound menus, file information, settings in six sections with a key editor, a dark theme and a warm cream light theme.

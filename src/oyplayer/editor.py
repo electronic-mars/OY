@@ -143,7 +143,7 @@ def render_note(n, size, box, path):
     img.fill(Qt.transparent)
     p = QPainter(img)
     p.setRenderHint(QPainter.Antialiasing)
-    color, lw = QColor(n["color"]), max(1.5, STROKE * ph)
+    color, lw = QColor(n["color"]), max(1.5, STROKE * ph * n.get("size", 1.0))
     pen = QPen(color, lw, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
     pts = [QPointF(x0 + x * pw, y0 + y * ph) for x, y in n["pts"]]
     if n["kind"] == "image":
@@ -165,7 +165,7 @@ def render_note(n, size, box, path):
         p.setPen(pen)
         p.drawPolyline(QPolygonF(pts))
     elif n["kind"] == "arrow":
-        tip, base, left, right = arrow_head(pts[0], pts[1], max(4 * lw, HEAD * ph))
+        tip, base, left, right = arrow_head(pts[0], pts[1], max(4 * lw, HEAD * ph * n.get("size", 1.0)))
         p.setPen(pen)
         p.drawLine(pts[0], base)
         p.setPen(Qt.NoPen)
@@ -689,8 +689,8 @@ class Editor(QObject):
             self.changed.emit()
 
     # ---- drawings over the picture
-    @Slot(str, "QVariantList", str, result=int)
-    def addNote(self, kind, pts, color):
+    @Slot(str, "QVariantList", str, float, result=int)
+    def addNote(self, kind, pts, color, size):
         """A drawing on the playing file, on screen from now for NOTE_SECONDS; its ends are
         moved on the timeline."""
         path, t = self._here()
@@ -701,7 +701,7 @@ class Editor(QObject):
         shown = [n for n in self._notes if n["path"] == path and n["a"] <= t <= n["b"]]
         a, b = (shown[-1]["a"], shown[-1]["b"]) if shown else             (t, max(min(t + NOTE_SECONDS, self.p.duration or t + NOTE_SECONDS), t + NOTE_MIN))
         self._mark(tr("undo_add", tr("note_" + kind)))
-        self._notes.append({"kind": kind, "path": path, "a": a, "b": b, "color": color,
+        self._notes.append({"kind": kind, "path": path, "a": a, "b": b, "color": color, "size": size,
                             "pts": [[float(x), float(y)] for x, y in pts], "text": ""})
         self._choose(note=len(self._notes) - 1)
         log.info("note %s at %.2f in %s", kind, t, Path(path).name)
@@ -784,6 +784,15 @@ class Editor(QObject):
             return
         self._mark(tr("undo_color", tr("note_" + self._notes[i]["kind"])))
         self._notes[i]["color"] = color
+        self.changed.emit()
+
+    @Slot(int, float)
+    def setNoteSize(self, i, size):
+        """The line's thickness: a multiple of STROKE (the draw bar's thin, medium, thick)."""
+        if size == self._notes[i].get("size", 1.0):
+            return
+        self._mark(tr("undo_size", tr("note_" + self._notes[i]["kind"])))
+        self._notes[i]["size"] = size
         self.changed.emit()
 
     @Slot(int)

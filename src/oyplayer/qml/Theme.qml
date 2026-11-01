@@ -1,11 +1,26 @@
 pragma Singleton
 import QtQuick
 
-// Braun: graphite body, a single accent, recessed controls.
+// The default skin: graphite body, a single accent, recessed controls.
 // Values transcribed from Master Audio Switcher (MAS/src/mas/ui/app.css) so the two
 // programs read as one family; the light theme is the cream body.
 QtObject {
     property bool light: false
+
+    // The skin (skins.py; Main binds skins.look): colours for the dark or light body over the
+    // tokens below, and parts drawn another way. The default is {}: every token as written here.
+    // A colour given as "accent" is the one colour, so a skin can light its LCD in it.
+    property var skin: ({})
+    readonly property var pal: (light ? skin.light : skin.dark) || ({})
+    function tok(name, base) { var v = pal[name]; return v === undefined ? base : v === "accent" ? acc : v }
+    function part(name, base) { var p = skin.parts; return p && p[name] !== undefined ? p[name] : base }
+    readonly property string volumeStyle: part("volume", "rail")       // rail | knob
+    // the well the keys sit in: transport (from the play key to the editor's, the default), deck
+    // (the play and speed keys), none
+    readonly property string wellStyle: part("well", "transport")
+    readonly property bool settingsRight: part("settings", "left") === "right"
+    readonly property bool drawCentred: part("drawBar", "center") === "center"     // over the picture's middle (Argon's v1); a skin may say "corner"
+    readonly property bool lcdGlow: tok("lcdGlow", false)               // a dark LCD: its figures glow
 
     // The one colour (setting "accent", orange by default; the editor's yellow while editing),
     // set from Main. Its shades keep the old orange's lightness steps in OKLCH, so any choice
@@ -55,41 +70,41 @@ QtObject {
         return Qt.rgba(enc(rgb[0]), enc(rgb[1]), enc(rgb[2]), 1)
     }
 
-    // The Braun concept (docs/screens/master/concept): a graphite or warm cream body, rubber
+    // The concept (docs/screens/master/concept): a graphite or warm cream body, rubber
     // caps a step lighter than it, warm grey signs, one accent.
-    readonly property color bg:       light ? "#E4DED0" : "#1C1F24"
-    readonly property color panelHi:  light ? "#E9E3D6" : "#22252A"
-    readonly property color card:     light ? "#F3EFE6" : "#191C21"
-    readonly property color line:     light ? Qt.rgba(0, 0, 0, .10) : Qt.rgba(1, 1, 1, .065)
-    readonly property color lineHi:   light ? Qt.rgba(0, 0, 0, .17) : Qt.rgba(1, 1, 1, .12)
+    readonly property color bg:       tok("bg", light ? "#E4DED0" : "#1C1F24")
+    readonly property color panelHi:  tok("panelHi", light ? "#E9E3D6" : "#22252A")
+    readonly property color card:     tok("card", light ? "#F3EFE6" : "#191C21")
+    readonly property color line:     tok("line", light ? Qt.rgba(0, 0, 0, .10) : Qt.rgba(1, 1, 1, .065))
+    readonly property color lineHi:   tok("lineHi", light ? Qt.rgba(0, 0, 0, .17) : Qt.rgba(1, 1, 1, .12))
     // warm greys, as the concept's ink, each as light as the cool one it replaces (the contrasts stay)
-    readonly property color tx:       light ? "#2B2D31" : "#E8E5DE"
-    readonly property color tx2:      light ? "#5F5B54" : "#A29E96"
-    readonly property color tx3:      light ? "#625D55" : "#8F8B83"
-    readonly property color deck:     light ? "#DCD5C5" : "#202328"     // the control deck and the list's pane
-    readonly property color title:    light ? "#EAE5D9" : "#17191D"
-    readonly property color rule:     light ? "#C8C0AF" : "#2E333A"     // a group's hairline
-    readonly property color sunk:    light ? Qt.rgba(0, 0, 0, .13) : Qt.rgba(0, 0, 0, .45)
-    readonly property color groove:   light ? "#B9B09F" : "#111316"
-    readonly property color grooveEdge: light ? Qt.rgba(1, 1, 1, .55) : Qt.rgba(1, 1, 1, .06)
+    readonly property color tx:       tok("tx", light ? "#2B2D31" : "#E8E5DE")
+    readonly property color tx2:      tok("tx2", light ? "#5F5B54" : "#A29E96")
+    readonly property color tx3:      tok("tx3", light ? "#625D55" : "#8F8B83")
+    readonly property color deck:     tok("deck", light ? "#DCD5C5" : "#202328")     // the control deck and the list's pane
+    readonly property color title:    tok("title", light ? "#EAE5D9" : "#17191D")
+    readonly property color rule:     tok("rule", light ? "#C8C0AF" : "#2E333A")     // a group's hairline
+    readonly property color sunk:    tok("sunk", light ? Qt.rgba(0, 0, 0, .13) : Qt.rgba(0, 0, 0, .45))
+    readonly property color groove:   tok("groove", light ? "#B9B09F" : "#111316")
+    readonly property color grooveEdge: tok("grooveEdge", light ? Qt.rgba(1, 1, 1, .55) : Qt.rgba(1, 1, 1, .06))
     // the scale's labels and ticks, the volume's fill: a warm grey a step under the signs
-    readonly property color inkDim:   light ? "#847E73" : "#7F7C76"
-    readonly property color well:     light ? "#D6CEBE" : "#17191D"     // a list sunk into the body
+    readonly property color inkDim:   tok("inkDim", light ? "#847E73" : "#7F7C76")
+    readonly property color well:     tok("well", light ? "#D6CEBE" : "#17191D")     // a list sunk into the body
     // Key caps: bevel on top, shadow below, like rubber keys on a remote.
-    readonly property color capTop:   light ? "#F6F2EA" : "#30343A"
-    readonly property color capBot:   light ? "#EAE4D8" : "#282B31"
-    readonly property color capHiTop: light ? "#FFFFFF" : "#383C43"
-    readonly property color capHiBot: light ? "#F1ECE2" : "#2D3137"
-    readonly property color capDnTop: light ? "#EAE4D8" : "#282B31"
-    readonly property color capDnBot: light ? "#F6F2EA" : "#30343A"
-    readonly property color glyph:    light ? "#2B2D31" : "#C9C6BF"
+    readonly property color capTop:   tok("capTop", light ? "#F6F2EA" : "#30343A")
+    readonly property color capBot:   tok("capBot", light ? "#EAE4D8" : "#282B31")
+    readonly property color capHiTop: tok("capHiTop", light ? "#FFFFFF" : "#383C43")
+    readonly property color capHiBot: tok("capHiBot", light ? "#F1ECE2" : "#2D3137")
+    readonly property color capDnTop: tok("capDnTop", light ? "#EAE4D8" : "#282B31")
+    readonly property color capDnBot: tok("capDnBot", light ? "#F6F2EA" : "#30343A")
+    readonly property color glyph:    tok("glyph", light ? "#2B2D31" : "#C9C6BF")
     // LCD glass: pale grey-green with near-black segments; unlit segments show faintly.
     // The same glass sits in the cream body, in a darker bezel.
-    readonly property color lcdHi:    "#A9B2A3"
-    readonly property color lcd:      "#9FA89A"
-    readonly property color lcdLo:    "#96A091"
-    readonly property color lcdInk:   "#1E2420"
-    readonly property color lcdBezel: light ? "#6E685D" : "#0E1012"
+    readonly property color lcdHi:    tok("lcdHi", "#A9B2A3")
+    readonly property color lcd:      tok("lcd", "#9FA89A")
+    readonly property color lcdLo:    tok("lcdLo", "#96A091")
+    readonly property color lcdInk:   tok("lcdInk", "#1E2420")
+    readonly property color lcdBezel: tok("lcdBezel", light ? "#6E685D" : "#0E1012")
 
     readonly property string uiFont: "Segoe UI Variable Text"
     readonly property string monoFont: "IBM Plex Mono"        // fonts/, loaded by __main__
@@ -104,7 +119,7 @@ QtObject {
     readonly property int keyRadius: [6, 7, 8][tier]
     readonly property int keyIcon: [16, 17, 18][tier]
     readonly property int keyIconRound: 18
-    readonly property color capShadow: light ? "#B3AA98" : "#0F1114"
+    readonly property color capShadow: tok("capShadow", light ? "#B3AA98" : "#0F1114")
 
     // Lucide signs by name (icons.py draws them); play and pause are filled figures
     readonly property string icPlay: "play"
@@ -123,6 +138,9 @@ QtObject {
     readonly property string icList: "list-video"
     readonly property string icInfo: "info"
     readonly property string icClock: "clock"
+    readonly property string icPalette: "palette"
+    readonly property string icLock: "lock"
+    readonly property string icCheck: "check"
     readonly property string icPin: "pin"
     readonly property string icPinned: "pin"
     // the editor

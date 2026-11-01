@@ -9,6 +9,8 @@ Item {
     id: layer
     property string tool: "select"          // select | text | arrow | rect | pen
     property color ink: "#F26A21"
+    property real size: 1                   // the line: thin .6, medium 1, thick 1.6 (the draw bar)
+    property real topClear: 0               // the draw bar lies over the picture down to here
     readonly property real lw: Math.max(1.5, 0.007 * height)
     readonly property int textPx: Math.max(6, Math.round(0.065 * height))
     property var draft: null                // the drawing under the pointer, not yet added
@@ -52,7 +54,8 @@ Item {
             var q = px(n.pts[k])
             x0 = Math.min(x0, q.x); y0 = Math.min(y0, q.y); x1 = Math.max(x1, q.x); y1 = Math.max(y1, q.y)
         }
-        return Qt.rect(x0 - lw, y0 - lw, x1 - x0 + 2 * lw, y1 - y0 + 2 * lw)
+        var w = lw * (n.size || 1)
+        return Qt.rect(x0 - w, y0 - w, x1 - x0 + 2 * w, y1 - y0 + 2 * w)
     }
     // the topmost shown drawing under a point, or -1
     function hit(x, y) {
@@ -110,7 +113,7 @@ Item {
             // a bar pointed at: the other drawings step back to 40 %
             ctx.globalAlpha = (n.ghost ? .35 : 1) * (layer.lit >= 0 && n.i !== layer.lit ? .4 : 1)
             ctx.strokeStyle = ctx.fillStyle = n.color
-            ctx.lineWidth = layer.lw
+            ctx.lineWidth = layer.lw * (n.size || 1)
             ctx.lineCap = ctx.lineJoin = "round"
             var p = n.pts.map(layer.px)
             if (n.kind === "rect") {
@@ -122,7 +125,7 @@ Item {
                 ctx.stroke()
             } else if (n.kind === "arrow") {
                 var dx = p[1].x - p[0].x, dy = p[1].y - p[0].y, d = Math.max(1e-6, Math.hypot(dx, dy))
-                var ux = dx / d, uy = dy / d, len = Math.max(4 * layer.lw, 0.035 * layer.height), half = len * .55
+                var ux = dx / d, uy = dy / d, len = Math.max(4 * ctx.lineWidth, 0.035 * layer.height * (n.size || 1)), half = len * .55
                 var bx = p[1].x - ux * len, by = p[1].y - uy * len
                 ctx.beginPath(); ctx.moveTo(p[0].x, p[0].y); ctx.lineTo(bx, by); ctx.stroke()
                 ctx.beginPath(); ctx.moveTo(p[1].x, p[1].y)
@@ -176,10 +179,10 @@ Item {
                 moving = { i: i, from: p, pts: editor.notes[i].pts.map(q => [q[0], q[1]]) }
             } else if (layer.tool === "text") {
                 if (!player.paused) player.togglePause()   // a drawing belongs to the frame it is drawn on
-                input.start(editor.addNote("text", [p], layer.ink.toString()))
+                input.start(editor.addNote("text", [p], layer.ink.toString(), 1))
             } else {
                 if (!player.paused) player.togglePause()
-                layer.draft = { kind: layer.tool, color: layer.ink.toString(), pts: [p, p], text: "", i: -1 }
+                layer.draft = { kind: layer.tool, color: layer.ink.toString(), size: layer.size, pts: [p, p], text: "", i: -1 }
             }
         }
         onPositionChanged: (m) => {
@@ -201,7 +204,8 @@ Item {
             if (!d) return
             var b = layer.box(d)
             // a click without a drag is not a drawing
-            if (b.width - 2 * layer.lw > 4 || b.height - 2 * layer.lw > 4) editor.addNote(d.kind, d.pts, d.color)
+            var w = 2 * layer.lw * d.size
+            if (b.width - w > 4 || b.height - w > 4) editor.addNote(d.kind, d.pts, d.color, d.size)
             canvas.requestPaint()
         }
         onDoubleClicked: (m) => {
@@ -209,6 +213,57 @@ Item {
             if (layer.tool === "select" && i >= 0 && editor.notes[i].kind === "text") input.start(i)
         }
         onWheel: (w) => w.accepted = false
+    }
+
+    // the chosen drawing: its name and times on a plate of the accent over it (Argon's v1, 01.11),
+    // and a rectangle's corners, an arrow's ends to take and move
+    readonly property var chosen: shown.find(n => n.i === editor.noteSel && !n.ghost) || null
+    function mmss(t) {
+        var s = Math.max(0, Math.round(t)), two = (v) => (v < 10 ? "0" : "") + v
+        return two(Math.floor(s / 60)) + ":" + two(s % 60)
+    }
+    Rectangle {
+        objectName: "noteLabel"
+        readonly property rect b: layer.chosen ? layer.box(layer.chosen) : Qt.rect(0, 0, 0, 0)
+        visible: layer.chosen !== null && input.note < 0
+        x: Math.max(0, Math.min(layer.width - width, b.x - 4))
+        // over the frame round the drawing; under it where the draw bar or the picture's top would hide it
+        y: b.y - 4 - height - 4 >= layer.topClear ? b.y - 4 - height - 4 : b.y + b.height + 8
+        width: labelText.implicitWidth + 14; height: 18; radius: 4
+        color: Theme.acc
+        Text {
+            id: labelText
+            anchors.centerIn: parent
+            text: layer.chosen ? (L.t["tl_" + layer.chosen.kind] || L.t.tl_drawings) + " • "
+                                 + layer.mmss(layer.chosen.a) + "–" + layer.mmss(layer.chosen.b) : ""
+            color: Theme.inkOnAcc; font.family: Theme.uiFont; font.pixelSize: 11; font.weight: Font.DemiBold
+        }
+    }
+    Repeater {
+        // [which point's x, which point's y]: a rectangle's four corners, an arrow's two ends
+        model: !layer.chosen || input.note >= 0 ? []
+               : layer.chosen.kind === "rect" ? [[0, 0], [1, 0], [0, 1], [1, 1]]
+               : layer.chosen.kind === "arrow" ? [[0, 0], [1, 1]] : []
+        Rectangle {
+            objectName: "noteHandle" + index
+            readonly property var n: layer.chosen
+            x: n.pts[modelData[0]][0] * layer.width - 4
+            y: n.pts[modelData[1]][1] * layer.height - 4
+            width: 8; height: 8
+            color: "#FFFFFF"; border.color: Qt.rgba(0, 0, 0, .85)
+            MouseArea {
+                anchors.fill: parent; anchors.margins: -5
+                cursorShape: Qt.CrossCursor
+                onPositionChanged: (m) => {
+                    if (!pressed) return
+                    var p = layer.clamp(mapToItem(layer, m.x, m.y)), n = parent.n
+                    var pts = n.pts.map(q => [q[0], q[1]])
+                    pts[modelData[0]][0] = p[0]
+                    pts[modelData[1]][1] = p[1]
+                    editor.setNotePoints(n.i, pts)
+                }
+            }
+        }
     }
 
     // typing a text drawing in place

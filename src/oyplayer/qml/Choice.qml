@@ -37,7 +37,7 @@ Rectangle {
             menu.open()
         }
     }
-    BraunMenu { id: menu; objectName: "choiceMenu"; y: ch.height + 4; rowWidth: ch.width - 12 }
+    PanelMenu { id: menu; objectName: "choiceMenu"; y: ch.height + 4; rowWidth: ch.width - 12 }
     // the settings closed or turned to another section: the list goes with them
     onVisibleChanged: if (!visible) menu.close()
 }

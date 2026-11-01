@@ -1,15 +1,17 @@
 import QtQuick
 
-// The editor's drawing tools, a card in the picture's upper left corner (the Braun concept):
-// pick and move, pencil, rectangle, arrow, text, a logo; four inks (a logo chosen: its opacity);
+// The editor's drawing tools, a card over the picture (Argon's v1, 01.11): pick and move,
+// pencil, rectangle, arrow, text, a logo; five inks (a logo chosen: its opacity); three lines;
 // the turn and the frame; undo, redo; delete the chosen drawing. The tool in use is pressed in,
 // its sign in the accent.
 Rectangle {
     id: bar
     property string tool: "select"
     property color ink: "#F26A21"
+    property real size: 1
     signal toolPicked(string tool)
     signal inkPicked(color ink)
+    signal sizePicked(real size)
     signal imageRequested()
     readonly property var chosen: editor.noteSel >= 0 && editor.noteSel < editor.notes.length ? editor.notes[editor.noteSel] : null
     readonly property bool logo: chosen !== null && chosen.kind === "image"
@@ -61,7 +63,7 @@ Rectangle {
             }
         }
         Repeater {
-            model: bar.logo ? [] : ["#F26A21", "#FFFFFF", "#FFD60A", "#1C1F24"]
+            model: bar.logo ? [] : ["#FFFFFF", "#FFD60A", "#F26A21", "#3B82F6", "#E5484D"]
             Rectangle {
                 objectName: "ink" + index
                 anchors.verticalCenter: parent.verticalCenter
@@ -77,6 +79,24 @@ Rectangle {
             }
         }
         Sep {}
+        // the line: thin, medium, thick (the chosen drawing's, else the next one's)
+        Repeater {
+            model: [.6, 1, 1.6]
+            Rectangle {
+                objectName: "size" + index
+                readonly property bool on: Math.abs((bar.chosen && !bar.logo ? bar.chosen.size || 1 : bar.size) - modelData) < .01
+                anchors.verticalCenter: parent.verticalCenter
+                width: 22; height: 22; radius: 11
+                color: "transparent"
+                border.color: on ? Theme.tx : "transparent"
+                border.width: 2
+                Rectangle { anchors.centerIn: parent; width: [5, 9, 13][index]; height: width; radius: width / 2
+                            color: sizeArea.containsMouse || parent.on ? Theme.tx : Theme.glyph }
+                MouseArea { id: sizeArea; anchors.fill: parent; hoverEnabled: true; onClicked: bar.sizePicked(modelData) }
+                Tip { text: L.t.draw_size.arg(L.t.draw_sizes.split("|")[index]); shown: sizeArea.containsMouse }
+            }
+        }
+        Sep {}
         // the whole edit: a quarter turn, and the frame (as it is, or 16:9 for a phone video)
         Key { objectName: "drawRotate"; glyph: Theme.icRotateRight; latched: editor.rotation !== 0
               tip: L.t.draw_rotate; onClicked: actions.run("edit_rotate") }
@@ -88,7 +108,7 @@ Rectangle {
                       { text: L.t["frame_" + f], checked: editor.frame === f, run: () => editor.setFrame(f) })))
                   frameMenu.open()
               }
-              BraunMenu { id: frameMenu; objectName: "frameMenu"; y: parent.height + 8; margins: 8 } }
+              PanelMenu { id: frameMenu; objectName: "frameMenu"; y: parent.height + 8; margins: 8 } }
         Sep {}
         Key { objectName: "drawUndo"; glyph: "undo-2"; tip: L.t.draw_undo; onClicked: actions.run("edit_undo") }
         Key { objectName: "drawRedo"; glyph: "redo-2"; tip: L.t.draw_redo; onClicked: actions.run("edit_redo") }

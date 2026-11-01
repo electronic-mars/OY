@@ -24,7 +24,8 @@ DEFAULTS = {
     # Window
     "lang": "",                  # "" = as Windows shows (Ukrainian or English) | en | uk
     "theme": "system",           # system | dark | light
-    "accent": "#F26A21",         # the one colour of the panel (Braun orange); yellow is the editor's
+    "accent": "#F26A21",         # the one colour of the panel (orange); yellow is the editor's
+    "skin": "default",           # default (Theme.qml itself) | a sealed skin's id (skins.py)
     "onTop": "never",            # never | always | playing
     "fitWindow": True,
     "singleInstance": True,

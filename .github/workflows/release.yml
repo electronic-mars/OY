@@ -81,6 +81,21 @@ jobs:
           if (-not (Test-Path $iscc)) { "::error::no Inno Setup at $iscc"; exit 1 }
           & $iscc 2>&1 | Select-Object -First 1
 
+      - name: The skins' content secret
+        shell: pwsh
+        env:
+          SKIN_KEY: ${{ secrets.SKIN_KEY }}
+        run: |
+          # Without it the player opens none of the skins it carries (the default stays): a tag
+          # needs it, a branch run only says so.
+          if (-not $env:SKIN_KEY) {
+            if ("${{ github.ref_type }}" -eq "tag") { "::error::the secret SKIN_KEY is not set"; exit 1 }
+            "::warning::SKIN_KEY is not set: this build opens no skin"; exit 0
+          }
+          # it also opens every bundled skin with the value: a wrong one stops the build here
+          .venv\Scripts\python tools/skin_pack.py key-from-env
+          if ($LASTEXITCODE -ne 0) { "::error::SKIN_KEY does not open the bundled skins"; exit 1 }
+
       - name: Build the player and the installer
         shell: cmd
         run: |

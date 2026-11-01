@@ -12,3 +12,8 @@ build/
 dist/
 # The release signing key: it belongs in the repository's secrets only (tools/make_update_key.py)
 .update-signing-key.pem
+# The skin keys: the signature's private half stays with the author, the content secret comes
+# from the repository secret SKIN_KEY in a release build (tools/skin_pack.py)
+.skin-signing-key.pem
+src/oyplayer/_skinkey.py
+*.license.json

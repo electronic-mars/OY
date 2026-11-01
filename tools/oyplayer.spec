@@ -33,6 +33,7 @@ a = Analysis(
     datas=[(str(SRC / "oyplayer" / "qml"), "oyplayer/qml"),
            (str(SRC / "oyplayer" / "icons"), "oyplayer/icons"),
            (str(SRC / "oyplayer" / "fonts"), "oyplayer/fonts"),
+           (str(SRC / "oyplayer" / "skins"), "oyplayer/skins"),       # the sealed skins (skins.py)
            (str(SRC / "oyplayer" / "oyplayer.ico"), "oyplayer")],
     hiddenimports=["wincap"],          # the self-test's window capture (tools\wincap.py)
     excludes=["tkinter", "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "PySide6.QtWebEngineQuick",

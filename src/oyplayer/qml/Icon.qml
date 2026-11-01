@@ -1,7 +1,7 @@
 import QtQuick
 
 // A Lucide sign (icons.py), drawn for the pixels it takes on this screen, in any colour.
-// Stroke is in Lucide's 24-unit grid: 1.5 is the panel's line, as in the Braun concept.
+// Stroke is in Lucide's 24-unit grid: 1.5 is the panel's line, as in the concept.
 Image {
     id: ic
     property string name: ""

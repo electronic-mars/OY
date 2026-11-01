@@ -2,7 +2,7 @@ import QtQuick
 
 // Omega's timeline: a scale of time marks above a thick seek groove, chapter notches,
 // the A-B repeat, and the time (with the frame) under the pointer while hovering.
-// Editing (the Braun concept): a column of track names on the left; the groove becomes the
+// Editing (the concept): a column of track names on the left; the groove becomes the
 // «Clip» track, the file's fragments as blocks where they lie and what stays out hatched; a
 // track of bars in their ink for the drawings; a playhead through all of them.
 Item {
@@ -30,9 +30,9 @@ Item {
     signal fragPicked(int row)      // a click on a fragment's block
     // editor: the column of track names; everything else is drawn right of it
     readonly property int gutter: editing ? (Theme.tier ? 112 : 84) + 12 : 0
-    readonly property int pitch: Theme.tier === 2 ? 26 : 20     // editor: a drawings' track, bar and air
+    readonly property int pitch: Theme.tier === 2 ? 26 : 22     // editor: a drawings' track, bar and air
     readonly property int railGap: editing && Theme.tier === 2 ? 6 : 2
-    readonly property int barH: Theme.tier === 2 ? 16 : 14
+    readonly property int barH: Theme.tier === 2 ? 20 : 18
     readonly property int clipH: Theme.tier === 2 ? 32 : 30
     readonly property int laneRows: noteLane && notes.length ? layout.count : 0
     property bool editing: false    // the editor is open
@@ -117,12 +117,19 @@ Item {
         return m + ":" + (r < 10 ? "0" : "") + r.toFixed(1)
     }
 
-    // The drawings on tracks: each in the first of up to four tracks where it overlaps no other
-    // (taken in order of their starts), so drawings that share an interval lie one above the
-    // other; more than four at once share the track that frees up first. Laid out from the
-    // model, which changes when a drag is let go: a bar never jumps track under the pointer.
+    // The drawings on tracks: up to six drawings, each on a track of its own named after it
+    // (Argon's v1, 01.11), in the order they were drawn; more, each in the first of up to four
+    // tracks where it overlaps no other (taken in order of their starts), so drawings that share
+    // an interval lie one above the other, and more than four at once share the track that frees
+    // up first. Laid out from the model, which changes when a drag is let go: a bar never jumps
+    // track under the pointer.
+    readonly property int ownTracks: 6
     readonly property var layout: {
         var ends = [], track = {}
+        if (notes.length <= ownTracks) {
+            for (var o = 0; o < notes.length; o++) track[notes[o].i] = o
+            return { track: track, count: Math.max(1, notes.length) }
+        }
         var order = notes.slice().sort((p, q) => p.a - q.a || p.i - q.i)
         for (var k = 0; k < order.length; k++) {
             var n = order[k], t = 0
@@ -197,13 +204,24 @@ Item {
             property string icon: ""
             property string word: ""
             property bool on: false
+            property color dot: "transparent"   // a drawing's track: its ink, in place of a sign
             spacing: 8
             height: 16
-            Icon { anchors.verticalCenter: parent.verticalCenter; name: parent.icon; size: 14
-                   color: parent.on ? Theme.glyph : Theme.inkDim }
+            Item {
+                width: 14; height: 14; anchors.verticalCenter: parent.verticalCenter
+                Icon { visible: parent.parent.icon !== ""; anchors.centerIn: parent; name: parent.parent.icon; size: 14
+                       color: parent.parent.on ? Theme.glyph : Theme.inkDim }
+                Rectangle { visible: parent.parent.icon === ""; anchors.centerIn: parent; width: 8; height: 8; radius: 4
+                            color: parent.parent.dot; border.color: Theme.lineHi }
+            }
             Text { anchors.verticalCenter: parent.verticalCenter; text: parent.word
-                   color: parent.on ? Theme.glyph : Theme.inkDim; font.family: Theme.uiFont; font.pixelSize: 12 }
+                   width: tl.gutter - 12 - 22 - 8; elide: Text.ElideRight
+                   color: parent.on ? Theme.glyph : Theme.inkDim; font.family: Theme.uiFont; font.pixelSize: 12
+                   font.weight: parent.on ? Font.DemiBold : Font.Normal }
         }
+        // over the names, on the scale's level: how many tracks there are
+        TrackName { objectName: "trackHeader"; x: 0; y: marks.y + 2; icon: "layers"
+                    word: L.t.tl_tracks.arg(1 + (tl.noteLane && tl.notes.length ? tl.layout.count : 0)) }
         TrackName { objectName: "trackClip"; y: rail.y + (rail.height - height) / 2; icon: "film"; word: L.t.tl_clip
                     on: tl.fragSel >= 0 }
         Repeater {
@@ -213,8 +231,10 @@ Item {
                 readonly property var kinds: tl.notes.filter(n => (tl.layout.track[n.i] || 0) === index).map(n => n.kind)
                                                    .filter((k, i, a) => a.indexOf(k) === i)
                 readonly property string kind: kinds.length === 1 ? kinds[0] : ""
+                readonly property var inks: tl.notes.filter(n => (tl.layout.track[n.i] || 0) === index).map(n => n.color)
+                                                  .filter((k, i, a) => a.indexOf(k) === i)
                 y: lane.y + index * tl.pitch + (tl.pitch - 4 - height) / 2
-                icon: ({ arrow: Theme.icArrow, rect: Theme.icRect, pen: Theme.icPen, text: Theme.icText, image: "image-plus" })[kind] || Theme.icPen
+                dot: inks.length === 1 ? (Qt.colorEqual(inks[0], "#FFFFFF") ? "#E9E6DF" : inks[0]) : Theme.inkDim
                 word: ({ arrow: L.t.tl_arrow, rect: L.t.tl_rect, pen: L.t.tl_pen, text: L.t.tl_text, image: L.t.tl_image })[kind] || L.t.tl_drawings
                 on: tl.span !== null && tl.span.track === index
             }
@@ -576,37 +596,30 @@ Item {
                 y: (tl.layout.track[modelData.i] || 0) * tl.pitch + (tl.pitch - tl.barH - 4) / 2
                 height: tl.barH
                 z: sel ? 2 : hot ? 1 : 0
-                // dark words on a light ink, light ones on a dark ink
-                readonly property color ink: modelData.color
-                readonly property bool lightInk: 0.2126 * ink.r + 0.7152 * ink.g + 0.0722 * ink.b > 0.45
-                Rectangle {     // the chosen one: a white ring round the bar, a dark one round that
-                    visible: nb.sel
-                    anchors.fill: parent; anchors.margins: -3
-                    radius: height / 2; color: "transparent"; border.width: 1.5; border.color: Qt.rgba(0, 0, 0, .6)
-                }
-                Rectangle {
-                    visible: nb.sel
-                    anchors.fill: parent; anchors.margins: -1.5
-                    radius: height / 2; color: "transparent"; border.width: 1.5; border.color: "white"
-                }
+                // Argon's v1 (01.11): an outline in the drawing's ink round a veil of it, a grip at
+                // each end, the times in the ink in the middle; the chosen one's outline doubled
+                readonly property color ink: Qt.colorEqual(modelData.color, "#FFFFFF") ? "#E9E6DF" : modelData.color
+                readonly property bool darkInk: 0.2126 * ink.r + 0.7152 * ink.g + 0.0722 * ink.b < 0.2
                 Rectangle {
                     anchors.fill: parent
-                    radius: height / 2
-                    // white ink reads as the concept's cream bar, not as a hole in the panel
-                    color: Qt.colorEqual(nb.ink, "#FFFFFF") ? "#E9E6DF" : nb.ink
-                    border.width: nb.sel || nb.lightInk ? 0 : 1
-                    border.color: Theme.lineHi
-                    Rectangle { anchors.fill: parent; radius: parent.radius; color: "white"; opacity: nb.hot && !nb.sel ? .18 : 0 }
+                    radius: 5
+                    color: Qt.rgba(nb.ink.r, nb.ink.g, nb.ink.b, nb.sel ? .30 : nb.hot ? .28 : .14)
+                    border.width: nb.sel ? 2 : 1
+                    border.color: nb.darkInk ? Theme.tx2 : nb.ink
                 }
-                Rectangle { visible: nb.sel; x: 5; y: 3; width: 2; height: parent.height - 6; radius: 1; color: Qt.rgba(0.11, 0.12, 0.14, .75) }
-                Rectangle { visible: nb.sel; x: parent.width - 7; y: 3; width: 2; height: parent.height - 6; radius: 1; color: Qt.rgba(0.11, 0.12, 0.14, .75) }
+                Rectangle { visible: parent.width > 14; x: 4; y: 4; width: 3; height: parent.height - 8; radius: 1.5
+                            color: nb.darkInk ? Theme.tx2 : nb.ink }
+                Rectangle { visible: parent.width > 14; x: parent.width - 7; y: 4; width: 3; height: parent.height - 8; radius: 1.5
+                            color: nb.darkInk ? Theme.tx2 : nb.ink }
                 Text {
-                    x: 12; width: parent.width - 20; anchors.verticalCenter: parent.verticalCenter
+                    x: 12; width: parent.width - 24; anchors.verticalCenter: parent.verticalCenter
+                    horizontalAlignment: Text.AlignHCenter
                     elide: Text.ElideRight
-                    text: (modelData.kind === "text" && modelData.text ? modelData.text + " · " : "") + tl.fmt(nb.a) + "–" + tl.fmt(nb.b)
-                    color: nb.lightInk ? "#1C1F24" : "#F3F1EC"
-                    font.family: Theme.monoFont; font.pixelSize: 10
-                    visible: parent.width > 40
+                    text: (modelData.kind === "text" && modelData.text ? modelData.text + " • " : "") + tl.fmt(nb.a) + "–" + tl.fmt(nb.b)
+                    color: nb.darkInk ? Theme.tx : nb.ink
+                    font.family: Theme.monoFont; font.pixelSize: 10; font.weight: nb.sel ? Font.Medium : Font.Normal
+                    // whole or not at all: «00:…» on a short bar said nothing
+                    visible: implicitWidth <= width || (modelData.kind === "text" && parent.width > 60)
                 }
                 MouseArea {
                     id: barArea
@@ -645,16 +658,16 @@ Item {
         visible: tl.span !== null
         readonly property real mid: tl.span ? (tl.px(tl.span.a) + tl.px(tl.span.b)) / 2 : 0
         x: Math.max(0, Math.min(area.width - width, mid - width / 2))
-        width: spanText.implicitWidth + 10; height: 14
-        radius: 3
+        width: spanText.implicitWidth + 14; height: 17
+        radius: 5
         color: Theme.card; border.color: Theme.lineHi
         Text {
             id: spanText
             objectName: "noteSpanLabel"
             anchors.centerIn: parent
-            text: tl.span ? tl.tenths(tl.span.a) + " – " + tl.tenths(tl.span.b) + " · "
-                            + L.num(tl.span.b - tl.span.a, 1) + " " + L.t.sec : ""
-            color: Theme.tx; font.family: Theme.uiFont; font.pixelSize: 10
+            text: tl.span ? tl.tenths(tl.span.a) + " – " + tl.tenths(tl.span.b) + " ("
+                            + L.num(tl.span.b - tl.span.a, 1) + " " + L.t.sec + ")" : ""
+            color: Theme.tx; font.family: Theme.monoFont; font.pixelSize: 10
         }
     }
     // time under the pointer, with its frame above it

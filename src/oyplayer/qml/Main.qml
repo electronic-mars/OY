@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Dialogs
 
 // Main window: the Omega skin's layout (title bar, timeline with a time scale, one row of
-// keys) in Braun dress. The picture is drawn by mpv underneath this scene; the window
+// keys) in the default skin. The picture is drawn by mpv underneath this scene; the window
 // only tells mpv how much of the height the title bar and panel keep clear.
 Window {
     id: win
@@ -20,6 +20,7 @@ Window {
                                   || (settings.values.onTop === "playing" && player.hasFile && !player.paused)
     Binding { target: Theme; property: "light"
               value: settings.values.theme === "light" || (settings.values.theme === "system" && app.systemLight) }
+    Binding { target: Theme; property: "skin"; value: skins.look }
     // the one colour: the player's own (or the settings' dial while it turns); yellow while
     // editing, so the mode can be seen at a glance
     Binding { target: Theme; property: "accent"
@@ -36,6 +37,7 @@ Window {
     readonly property string laneNotes: JSON.stringify(editor.active ? editor.notes.filter(n => n.path === playingPath) : [])
     property string drawTool: "select"          // the editor's drawing tool and ink
     property color drawInk: "#F26A21"
+    property real drawSize: 1
     // the scale (44 and its margins), the keys (as tall as the play key) and the foot under them
     readonly property int deckFoot: Theme.tier === 2 ? 14 : 8
     readonly property int editFoot: Theme.tier === 2 ? 14 : 10
@@ -238,7 +240,14 @@ Window {
                     { text: L.t.cancel, run: () => scheduler.cancel() })
         return it
     }
-    function openSchedMenu() { schedMenu.items = schedItems(); schedMenu.open() }
+    // While editing the panel's keys are hidden: the scheduler and on top are in the title bar
+    // (the owner chose it over the edit strip, 01.11), the menu drops down from there
+    function openSchedMenu() {
+        schedMenu.items = schedItems()
+        if (!editor.active) return popMenu(schedMenu, clockKey)
+        const p = titleClock.mapToItem(null, 0, titleClock.height + 6)
+        popMenu(schedMenu, null, Qt.point(p.x, p.y))
+    }
 
     // the opening and the credits, marked on the seek bar's right button (or by keys)
     function openSkipMenu() {
@@ -539,23 +548,44 @@ Window {
         height: visible ? (dims.h - dims.mt - dims.mb) / k : 0
         tool: win.drawTool
         ink: win.drawInk
+        size: win.drawSize
         lit: timeline.lit
+        topClear: drawBar.visible ? drawBar.y + drawBar.height - y : 0
     }
 
     // ---------- empty state
+    // a film over the name, and F2 drawn as the key it is (Gemini's empty state)
     Column {
         visible: !player.hasFile
         anchors.centerIn: videoArea
         spacing: 10
+        Icon {
+            anchors.horizontalCenter: parent.horizontalCenter
+            name: "film"; size: 32; stroke: 1.5; color: Theme.tx3; opacity: .6
+        }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: "OY PLAYER"
             color: Theme.tx3; font.family: Theme.uiFont; font.pixelSize: 22; font.letterSpacing: 8
         }
-        Text {
+        Row {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: L.t.drop_hint
-            color: Theme.tx3; opacity: .7; font.family: Theme.uiFont; font.pixelSize: 13
+            spacing: 7
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: L.t.drop_hint
+                color: Theme.tx3; opacity: .7; font.family: Theme.uiFont; font.pixelSize: 13
+            }
+            Rectangle {
+                objectName: "dropKey"
+                anchors.verticalCenter: parent.verticalCenter
+                width: f2.implicitWidth + 12; height: 20; radius: 4
+                color: Theme.capTop; border.color: Theme.lineHi
+                Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: 2; radius: 4
+                            color: Theme.capShadow }
+                Text { id: f2; anchors.centerIn: parent; anchors.verticalCenterOffset: -1; text: "F2"
+                       color: Theme.tx2; font.family: Theme.monoFont; font.pixelSize: 11; font.weight: Font.DemiBold }
+            }
         }
     }
 
@@ -605,15 +635,23 @@ Window {
     }
 
     DrawBar {
+        id: drawBar
         objectName: "drawBar"
         z: 5        // its hints rise over the title bar
         visible: editor.active && win.chromeShown
-        // in the picture's upper left corner (the window's, while the picture is not known)
+        // centred over the picture (the window, while the picture is not known); a skin may put
+        // it in the picture's upper left corner instead (Theme.drawCentred)
         readonly property int inset: Theme.tier === 2 ? 16 : 8
-        x: (noteLayer.visible ? noteLayer.x : 0) + inset
+        x: Theme.drawCentred ? (noteLayer.visible ? noteLayer.x + (noteLayer.width - width) / 2 : (videoArea.width - width) / 2)
+                             : (noteLayer.visible ? noteLayer.x : 0) + inset
         y: (noteLayer.visible ? noteLayer.y : win.bare ? 0 : win.titleH) + inset
         tool: win.drawTool
         ink: win.drawInk
+        size: win.drawSize
+        onSizePicked: (v) => {
+            win.drawSize = v
+            if (editor.noteSel >= 0 && editor.notes[editor.noteSel].kind !== "image") editor.setNoteSize(editor.noteSel, v)
+        }
         onToolPicked: (t) => win.drawTool = t
         onImageRequested: imageDialog.open()
         onInkPicked: (c) => {
@@ -639,7 +677,7 @@ Window {
                 onTriggered: techText.text = player.techInfo() }
     }
 
-    // ---------- title bar (Omega: about, scheduler, on top | minimise, maximise, close)
+    // ---------- title bar (the editor's badge | the title | minimise, maximise, close)
     Rectangle {
         id: titleBar
         anchors { left: parent.left; right: parent.right; top: parent.top }
@@ -662,11 +700,12 @@ Window {
         Row {
             anchors { left: parent.left; leftMargin: 6; verticalCenter: parent.verticalCenter }
             spacing: 2
-            IconButton { id: clockKey; objectName: "keyScheduler"; glyph: Theme.icClock; latched: scheduler.when !== ""
+            IconButton { id: titleClock; objectName: "titleScheduler"; visible: editor.active
+                         glyph: Theme.icClock; latched: scheduler.when !== ""
                          tip: scheduler.when !== "" ? scheduler.summary : L.t.t_scheduler
-                         onClicked: win.openSchedMenu()
-                         BraunMenu { id: schedMenu; objectName: "schedMenu"; y: parent.height + 6; margins: 8 } }
-            IconButton { glyph: win.onTop ? Theme.icPinned : Theme.icPin; latched: win.onTop
+                         onClicked: win.openSchedMenu() }
+            IconButton { objectName: "titleOnTop"; visible: editor.active
+                         glyph: win.onTop ? Theme.icPinned : Theme.icPin; latched: win.onTop
                          tip: L.t.t_on_top; onClicked: actions.run("on_top") }
             // editing: the mode says itself in the title bar, in its yellow (the concept)
             Rectangle {
@@ -685,6 +724,7 @@ Window {
             }
         }
         Text {
+            id: windowTitleText
             objectName: "windowTitle"
             anchors.centerIn: parent
             width: parent.width - 260
@@ -696,9 +736,55 @@ Window {
             font.family: Theme.uiFont; font.pixelSize: 12; font.letterSpacing: .2
             font.capitalization: player.title !== "" ? Font.MixedCase : Font.AllUppercase
         }
+        // editing: the picture's size and frame rate beside the name (Argon's v1, 01.11)
+        Rectangle {
+            objectName: "titleFormat"
+            // where the name leaves it the room before the playlist key
+            visible: editor.active && player.videoW > 0 && x + width + 8 <= winKeys.x
+            x: windowTitleText.x + (windowTitleText.width + windowTitleText.contentWidth) / 2 + 8
+            anchors.verticalCenter: parent.verticalCenter
+            width: formatText.implicitWidth + 12; height: 17; radius: 4
+            color: Theme.panelHi; border.color: Theme.lineHi
+            Text {
+                id: formatText
+                anchors.centerIn: parent
+                text: player.videoW + "×" + player.videoH + (player.fps > 0 ? " • " + Math.round(player.fps) + "fps" : "")
+                color: Theme.tx2; font.family: Theme.monoFont; font.pixelSize: 10
+            }
+        }
         // the window's own keys as wide as Windows' (46 px), the bar's full height
         Row {
+            id: winKeys
             anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+            // editing: the panel's playlist key is hidden, the playlist opens from here
+            Rectangle {
+                objectName: "titlePlaylist"
+                visible: editor.active
+                anchors.verticalCenter: parent.verticalCenter
+                width: plRow.width + 16; height: 24; radius: 6
+                color: plArea.containsMouse ? Theme.card : "transparent"
+                border.color: plArea.containsMouse ? Theme.line : "transparent"
+                Row {
+                    id: plRow
+                    anchors.centerIn: parent
+                    spacing: 6
+                    Icon { anchors.verticalCenter: parent.verticalCenter; name: Theme.icList; size: 14
+                           color: win.playlistShown ? Theme.accText : plArea.containsMouse ? Theme.tx : Theme.tx3 }
+                    Text { anchors.verticalCenter: parent.verticalCenter; text: L.t.tl_playlist
+                           color: win.playlistShown ? Theme.accText : plArea.containsMouse ? Theme.tx : Theme.tx2
+                           font.family: Theme.uiFont; font.pixelSize: 12 }
+                    Rectangle {
+                        visible: playlist.count > 0
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: plCount.implicitWidth + 8; height: 15; radius: 3; color: Theme.panelHi
+                        Text { id: plCount; anchors.centerIn: parent; text: playlist.count
+                               color: Theme.tx2; font.family: Theme.monoFont; font.pixelSize: 10 }
+                    }
+                }
+                MouseArea { id: plArea; anchors.fill: parent; hoverEnabled: true; onClicked: actions.run("playlist") }
+                Tip { text: L.t.t_playlist; shown: plArea.containsMouse; under: true }
+            }
+            Item { visible: editor.active; width: 6; height: 1 }
             IconButton { width: 46; height: win.titleH; radius: 0
                          glyph: Theme.icMin; tip: L.t.t_minimize; onClicked: actions.run("minimize") }
             // Windows 11 shows its Snap Layouts on this key (snap.py answers the hit test)
@@ -772,7 +858,7 @@ Window {
             skips: autoskip.bands
             onMenuRequested: win.openSkipMenu()
             onWheelStep: (a) => actions.run(a)
-            BraunMenu { id: skipMenu; objectName: "skipMenu"; x: 40; y: -implicitHeight - 10; margins: 8 }
+            PanelMenu { id: skipMenu; objectName: "skipMenu"; x: 40; y: -implicitHeight - 10; margins: 8 }
         }
 
         EditStrip {
@@ -786,6 +872,7 @@ Window {
 
         Item {
             id: keys
+            objectName: "panelKeys"
             visible: !editor.active             // editing, the editor's own row stands here
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: win.edge; rightMargin: win.edge; bottomMargin: win.deckFoot }
             height: Theme.keyPlay
@@ -793,27 +880,52 @@ Window {
             // jump about read as disorder); the order is the concept's: settings, the transport, the
             // sound, the time, the screenshot and the editor; the navigation on the right
             readonly property int step: [8, 10, 12][Theme.tier]
+            readonly property color wellColour: Qt.tint(Theme.deck, Theme.sunk)     // the sunk tone, opaque
 
+            // the wells the keys sit in (Theme.wellStyle). The transport's (the default, Gemini's first
+            // concept): one sunk groove from the play key to the editor's, the play key at its round
+            // head in a dark ring; the deck's: the play key and the speed key sunk together, as the
+            // keys under the screen of Master Audio Switcher
+            Rectangle {
+                objectName: "transportWell"
+                visible: Theme.wellStyle === "transport"
+                x: leftKeys.x + playKey.x + playKey.width / 2; y: (parent.height - height) / 2
+                width: editKey.x + editKey.width + 6 - playKey.x - playKey.width / 2; height: Theme.keyH + 10
+                radius: Theme.keyRadius + 4
+                color: keys.wellColour
+                border.color: Theme.line
+            }
+            // solid, so that it hides the groove's edge; no hairline: round the key it read as an
+            // outline (the owner)
+            Rectangle {
+                visible: Theme.wellStyle === "transport"
+                x: leftKeys.x + playKey.x - 4; y: leftKeys.y + playKey.y - 4
+                width: playKey.width + 8; height: width; radius: width / 2
+                color: keys.wellColour
+            }
+            Rectangle {
+                visible: Theme.wellStyle === "deck"
+                x: leftKeys.x + playKey.x - 5; y: leftKeys.y + playKey.y - 5
+                width: ffKey.x + ffKey.width - playKey.x + 10; height: playKey.height + 10
+                radius: Theme.keyRadius + 4
+                color: Theme.sunk
+                border.color: Theme.line
+            }
             Row {
                 id: leftKeys
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: keys.step
-                KeyCap { id: settingsKey; objectName: "keySettings"; glyph: Theme.icSettings; tip: L.t.t_settings
-                         latched: settingsPanel.visible
-                         anchors.verticalCenter: parent.verticalCenter
-                         onClicked: actions.run("settings") }
+                // on the left (the default skin, the owner's choice), or by the list's key (a skin: Theme.settingsRight)
+                SettingsKey { onRight: false }
                 // nothing loaded: mpv is not paused then, but the key offers to play (the list, or
                 // a file); a file to open on its right button (the open key is gone: F2 too)
-                KeyCap { id: playKey; objectName: "keyPlay"; round: true; accent: true
-                         width: Theme.keyPlay; height: Theme.keyPlay
-                         glyph: player.paused || !player.hasFile ? Theme.icPlay : Theme.icPause
-                         solid: true; glyphSize: Math.round(Theme.keyPlay * .4)
-                         glyphShift: glyph === Theme.icPlay ? 1.5 : 0
-                         second: true
-                         name: (player.paused || !player.hasFile ? L.t.t_play : L.t.t_pause).replace(/\s*\([^)]*\)/g, "")
-                         tip: (player.paused || !player.hasFile ? L.t.t_play : L.t.t_pause) + L.t.t_open_menu
-                         onClicked: actions.run("play_pause")
-                         onRightClicked: actions.run("open_file") }
+                PlayKey { id: playKey; objectName: "keyPlay"
+                          anchors.verticalCenter: parent.verticalCenter
+                          playing: player.hasFile && !player.paused
+                          name: (player.paused || !player.hasFile ? L.t.t_play : L.t.t_pause).replace(/\s*\([^)]*\)/g, "")
+                          tip: (player.paused || !player.hasFile ? L.t.t_play : L.t.t_pause) + L.t.t_open_menu
+                          onClicked: actions.run("play_pause")
+                          onRightClicked: actions.run("open_file") }
                 KeyCap { id: ffKey; objectName: "keyFast"; enabled: player.hasFile
                          glyph: Theme.icFastForward; latched: player.speed > 1.001
                          second: true; held: speedMenu.visible
@@ -830,9 +942,20 @@ Window {
                          anchors.verticalCenter: parent.verticalCenter
                          onClicked: actions.run("mute")
                          WheelHandler { onWheel: (w) => actions.run(w.angleDelta.y > 0 ? "volume_up" : "volume_down") } }
+                Knob {
+                    objectName: "volumeKnob"
+                    visible: Theme.volumeStyle === "knob"
+                    anchors.verticalCenter: parent.verticalCenter
+                    value: player.volume / 100
+                    name: L.t.volume
+                    valueText: Math.round(player.volume) + "%"
+                    onMoved: (v) => player.setVolume(v * 100)
+                    WheelHandler { onWheel: (w) => actions.run(w.angleDelta.y > 0 ? "volume_up" : "volume_down") }
+                }
                 Rail {
                     id: volume
                     objectName: "volume"
+                    visible: Theme.volumeStyle === "rail"
                     width: Theme.tier ? 88 : 84; height: 16; grooveHeight: 4; capWidth: 8
                     anchors.verticalCenter: parent.verticalCenter
                     value: player.volume / 100
@@ -857,17 +980,44 @@ Window {
                          enabled: player.hasFile; anchors.verticalCenter: parent.verticalCenter
                          onClicked: actions.run("screenshot")
                          onRightClicked: actions.run("screenshot_clipboard") }
-                KeyCap { objectName: "keyEdit"; glyph: Theme.icCut; latched: editor.active
+                KeyCap { id: editKey; objectName: "keyEdit"; glyph: Theme.icCut; latched: editor.active
                          enabled: player.hasFile || editor.active
                          tip: L.t.t_edit
                          anchors.verticalCenter: parent.verticalCenter
                          onClicked: actions.run("edit_mode") }
             }
 
+            // the settings key, where the skin puts it: one of the two shows, and has the name
+            component SettingsKey: KeyCap {
+                property bool onRight
+                visible: Theme.settingsRight === onRight
+                objectName: visible ? "keySettings" : ""
+                glyph: Theme.icSettings; tip: L.t.t_settings
+                latched: settingsPanel.visible
+                anchors.verticalCenter: parent.verticalCenter
+                onClicked: actions.run("settings")
+            }
+            SettingsKey {
+                onRight: true
+                anchors { right: rightKeys.left; rightMargin: keys.step * 2; verticalCenter: parent.verticalCenter }
+            }
             Row {
                 id: rightKeys
                 anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                 spacing: keys.step
+                // the scheduler and on top, keys of the panel in every skin (they were marks in the
+                // title bar), apart from the list's keys
+                KeyCap { id: clockKey; objectName: "keyScheduler"; glyph: Theme.icClock; latched: scheduler.when !== ""
+                         held: schedMenu.visible
+                         tip: scheduler.when !== "" ? scheduler.summary : L.t.t_scheduler
+                         anchors.verticalCenter: parent.verticalCenter
+                         onClicked: win.openSchedMenu()
+                         PanelMenu { id: schedMenu; objectName: "schedMenu"; y: -implicitHeight - 10; margins: 8 } }
+                KeyCap { objectName: "keyOnTop"; glyph: win.onTop ? Theme.icPinned : Theme.icPin; latched: win.onTop
+                         tip: L.t.t_on_top
+                         anchors.verticalCenter: parent.verticalCenter
+                         onClicked: actions.run("on_top") }
+                Item { width: keys.step; height: 1 }
                 // previous and next: only with more than one file in the list (PageUp, PageDown, the
                 // media keys and the mouse's side buttons do it always)
                 KeyCap { id: prevKey; objectName: "keyPrev"; glyph: Theme.icPrev; tip: L.t.t_prev
@@ -884,11 +1034,11 @@ Window {
         }
     }
 
-    BraunMenu { id: subsMenu; objectName: "subsMenu"; margins: 8 }
-    BraunMenu { id: speedMenu; objectName: "speedMenu"; margins: 8 }
-    BraunMenu { id: audioMenu; objectName: "audioMenu"; margins: 8 }
+    PanelMenu { id: subsMenu; objectName: "subsMenu"; margins: 8 }
+    PanelMenu { id: speedMenu; objectName: "speedMenu"; margins: 8 }
+    PanelMenu { id: audioMenu; objectName: "audioMenu"; margins: 8 }
     // the picture's right button: everything that left the panel, within one click
-    BraunMenu { id: pictureMenu; objectName: "pictureMenu"; margins: 8 }
+    PanelMenu { id: pictureMenu; objectName: "pictureMenu"; margins: 8 }
     // the picture card stands over the deck in the window's middle (its key left the panel:
     // Shift+V and the picture's menu open it)
     VideoPanel { id: videoPanel; objectName: "videoPanel"; parent: Overlay.overlay; margins: 8

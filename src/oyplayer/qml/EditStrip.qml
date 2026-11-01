@@ -1,6 +1,6 @@
 import QtQuick
 
-// The editor's deck, one row under its tracks (the Braun concept): marks and cuts, the
+// The editor's deck, one row under its tracks (the concept): marks and cuts, the
 // transport, the time to the hundredth; what the edit will be and how it is saved, Cancel and
 // Save on the right. The fragments themselves are blocks on the timeline's clip track; between
 // the two groups the strip says when it is saving or why saving failed.
@@ -42,6 +42,14 @@ Item {
     }
     readonly property int gap: Theme.tier ? 8 : 6
 
+    // a group in a frame of its own (Argon's v1): the cuts, what goes into the file, the codec
+    component Box: Rectangle {
+        height: Theme.keyH + 8
+        anchors.verticalCenter: parent.verticalCenter
+        radius: Theme.keyRadius + 3
+        color: Theme.card; border.color: Theme.lineHi
+    }
+
     component Sep: Item {
         width: [6, 10, 22][Theme.tier]; height: 24
         anchors.verticalCenter: parent.verticalCenter
@@ -52,30 +60,41 @@ Item {
         id: tools
         anchors.verticalCenter: parent.verticalCenter
         spacing: strip.gap
-        // the edit holds the whole file; these take away. Read as a ruler: |← ✂ →| (council 3)
-        KeyCap { objectName: "editIn"; glyph: "arrow-left-to-line"; tip: L.t.es_in; anchors.verticalCenter: parent.verticalCenter
-                 onClicked: actions.run("mark_in") }
-        KeyCap { objectName: "editCut"; glyph: Theme.icCut; tip: L.t.es_cut; anchors.verticalCenter: parent.verticalCenter
-                 onClicked: actions.run("cut_out") }
-        KeyCap { objectName: "editOut"; glyph: "arrow-right-to-line"; tip: L.t.es_out; anchors.verticalCenter: parent.verticalCenter
-                 onClicked: actions.run("mark_out") }
-        KeyCap { objectName: "editDelete"; glyph: Theme.icDelete; tip: L.t.es_clear; enabled: strip.frags.length > 0
-                 second: true
-                 anchors.verticalCenter: parent.verticalCenter
-                 onClicked: editor.removeSelected()
-                 onRightClicked: editor.clear() }
+        // the edit holds the whole file; these take away. Read as a ruler: |← ✂ →| (council 3),
+        // printed keys in one capsule with the bin (Argon's v1, 01.11)
+        Box {
+            id: cuts
+            objectName: "cutCapsule"
+            width: cutRow.width + 8
+            Row {
+                id: cutRow
+                anchors.centerIn: parent
+                spacing: 2
+                KeyCap { objectName: "editIn"; flat: true; glyph: "arrow-left-to-line"; tip: L.t.es_in
+                         anchors.verticalCenter: parent.verticalCenter; onClicked: actions.run("mark_in") }
+                KeyCap { objectName: "editCut"; flat: true; glyph: Theme.icCut; tip: L.t.es_cut
+                         caption: strip.width >= 1000 ? L.t.es_cut_word : ""
+                         anchors.verticalCenter: parent.verticalCenter; onClicked: actions.run("cut_out") }
+                KeyCap { objectName: "editOut"; flat: true; glyph: "arrow-right-to-line"; tip: L.t.es_out
+                         anchors.verticalCenter: parent.verticalCenter; onClicked: actions.run("mark_out") }
+                Rectangle { width: 1; height: 20; color: Theme.rule; anchors.verticalCenter: parent.verticalCenter }
+                KeyCap { objectName: "editDelete"; flat: true; glyph: Theme.icDelete; tip: L.t.es_clear; enabled: strip.frags.length > 0
+                         second: true
+                         anchors.verticalCenter: parent.verticalCenter
+                         onClicked: editor.removeSelected()
+                         onRightClicked: editor.clear() }
+            }
+        }
         Sep {}
         // frame by frame: only where the row has the room (Ctrl+← → do it in any window)
         KeyCap { objectName: "editFrameBack"; glyph: "step-back"; tip: L.t.t_frame_back; enabled: player.hasFile
                  visible: Theme.tier === 2
                  anchors.verticalCenter: parent.verticalCenter; onClicked: actions.run("frame_backward") }
-        KeyCap { objectName: "editPlay"; round: true; accent: true
-                 width: Theme.keyPlay; height: Theme.keyPlay
-                 glyph: player.paused || !player.hasFile ? Theme.icPlay : Theme.icPause
-                 solid: true; glyphSize: Math.round(Theme.keyPlay * .4)
-                 glyphShift: glyph === Theme.icPlay ? 1.5 : 0
-                 tip: player.paused || !player.hasFile ? L.t.t_play : L.t.t_pause
-                 onClicked: actions.run("play_pause") }
+        PlayKey { objectName: "editPlay"; anchors.verticalCenter: parent.verticalCenter
+                  playing: player.hasFile && !player.paused
+                  name: (player.paused || !player.hasFile ? L.t.t_play : L.t.t_pause).replace(/\s*\([^)]*\)/g, "")
+                  tip: player.paused || !player.hasFile ? L.t.t_play : L.t.t_pause
+                  onClicked: actions.run("play_pause") }
         KeyCap { objectName: "editFrame"; glyph: Theme.icFrame; tip: L.t.t_frame; enabled: player.hasFile
                  visible: Theme.tier === 2
                  anchors.verticalCenter: parent.verticalCenter; onClicked: actions.run("frame_forward") }
@@ -88,7 +107,7 @@ Item {
     // clip track), a hint while the edit is empty, the progress while saving, a failure's reason
     Item {
         id: middle
-        anchors { left: tools.right; leftMargin: 16; right: info.left; rightMargin: 16
+        anchors { left: tools.right; leftMargin: 16; right: infoBox.left; rightMargin: 16
                   top: parent.top; bottom: parent.bottom; topMargin: 4; bottomMargin: 4 }
         Text {
             visible: !editor.edited && editor.previewing < 0 && !editor.exporting && editor.error === ""
@@ -170,45 +189,51 @@ Item {
         }
     }
 
-    // ---- what goes into the file, in one line (the blind comparison: the edit's state must
-    // read without opening anything): the length, «To the file: 2 fragments · LOSSLESS»; when
-    // «without loss» was chosen and cannot be, the reason under it
-    Column {
-        id: info
-        anchors { right: saveRow.left; rightMargin: 16; verticalCenter: parent.verticalCenter }
-        spacing: 1
-        Row {
-            spacing: 4
-            Text {
-                objectName: "editTotal"
-                // while the edit plays: time played / length
-                text: editor.previewing >= 0 ? strip.fmt(strip.played) + " / " + strip.fmt(editor.total) : strip.fmt(editor.total)
-                color: Theme.tx; font.family: Theme.monoFont; font.pixelSize: 13; font.weight: Font.Medium
+    // ---- what goes into the file, in one line in a frame (the blind comparison: the edit's state
+    // must read without opening anything): «0:25.0 • 2 fragments · LOSSLESS»; when «without
+    // loss» was chosen and cannot be, the reason under it
+    Box {
+        id: infoBox
+        objectName: "infoBox"
+        anchors { right: saveRow.left; rightMargin: strip.gap; verticalCenter: parent.verticalCenter }
+        width: info.width + 24
+        Column {
+            id: info
+            anchors.centerIn: parent
+            spacing: 1
+            Row {
+                spacing: 4
+                Text {
+                    objectName: "editTotal"
+                    // while the edit plays: time played / length
+                    text: editor.previewing >= 0 ? strip.fmt(strip.played) + " / " + strip.fmt(editor.total) : strip.fmt(editor.total)
+                    color: Theme.tx; font.family: Theme.monoFont; font.pixelSize: 13; font.weight: Font.Medium
+                }
+                Text {
+                    objectName: "editSummary"
+                    anchors.baseline: parent.children[0].baseline
+                    // in a narrower window, or while the result plays (its bar takes the room): the length and the mode
+                    visible: strip.frags.length > 0 && strip.width >= 1000 && editor.previewing < 0
+                    text: "•  " + strip.frags.length + " " + L.plural(strip.frags.length, L.t.frag_forms) + "  ·"
+                    color: Theme.tx2; font.family: Theme.uiFont; font.pixelSize: 11
+                }
+                Text {
+                    objectName: "editMode"
+                    anchors.baseline: parent.children[0].baseline
+                    text: strip.frags.length === 0 ? L.t.edit_caps : { copy: L.t.lossless_caps, h264: "H.264", h265: "H.265" }[editor.mode]
+                    color: strip.frags.length > 0 && editor.lossless ? Theme.accText : Theme.tx3
+                    font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: .8
+                }
             }
-            Text {
-                objectName: "editSummary"
-                anchors.baseline: parent.children[0].baseline
-                // in a narrower window, or while the result plays (its bar takes the room): the length and the mode
-                visible: strip.frags.length > 0 && strip.width >= 1150 && editor.previewing < 0
-                text: L.t.es_to_file.arg(strip.frags.length + " " + L.plural(strip.frags.length, L.t.frag_forms))
-                color: Theme.tx2; font.family: Theme.uiFont; font.pixelSize: 11
-            }
-            Text {
-                objectName: "editMode"
-                anchors.baseline: parent.children[0].baseline
-                text: strip.frags.length === 0 ? L.t.edit_caps : { copy: L.t.lossless_caps, h264: "H.264", h265: "H.265" }[editor.mode]
-                color: strip.frags.length > 0 && editor.lossless ? Theme.accText : Theme.tx3
-                font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: .8
-            }
-        }
-        Row {
-            spacing: 8
-            Text {
-                objectName: "editReason"
-                visible: strip.frags.length > 0 && editor.reason !== ""
-                text: editor.reason.toUpperCase()
-                color: Theme.tx3
-                font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: .8
+            Row {
+                spacing: 8
+                Text {
+                    objectName: "editReason"
+                    visible: strip.frags.length > 0 && editor.reason !== ""
+                    text: editor.reason.toUpperCase()
+                    color: Theme.tx3
+                    font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: .8
+                }
             }
         }
         HoverHandler { id: infoHover }
@@ -221,32 +246,34 @@ Item {
         spacing: strip.gap
         // what saving will really do: «Lossless» goes off while it cannot be (the setting stays,
         // and comes back into force when the drawings or the other format are gone)
-        Column {
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 2
-            Text { objectName: "codecTitle"; text: L.t.es_codec; color: Theme.tx3
-                   font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: .3 }
-            Segmented {
-                objectName: "editCodec"
-                width: [130, 150, 186][Theme.tier]
-                value: editor.mode
-                options: [{ value: "copy", text: L.t.lossless, enabled: editor.canCopy },
-                          { value: "h264", text: "H.264" }, { value: "h265", text: "H.265" }]
-                onPicked: (x) => settings.set("exportCodec", x)
+        Box {
+            width: codecRow.width + 20
+            Row {
+                id: codecRow
+                anchors.centerIn: parent
+                spacing: 10
+                Text { objectName: "codecTitle"; text: L.t.es_codec.toUpperCase(); color: Theme.tx3
+                       visible: strip.width >= 1000
+                       anchors.verticalCenter: parent.verticalCenter
+                       font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: .8 }
+                Segmented {
+                    objectName: "editCodec"
+                    width: [130, 150, 186][Theme.tier]
+                    value: editor.mode
+                    options: [{ value: "copy", text: L.t.lossless, enabled: editor.canCopy },
+                              { value: "h264", text: "H.264" }, { value: "h265", text: "H.265" }]
+                    anchors.verticalCenter: parent.verticalCenter
+                    onPicked: (x) => settings.set("exportCodec", x)
+                }
             }
         }
         // the finished video, always from its start (again: stop)
         // the words only where the row has the room (the middle keeps its say: progress, a failure)
-        KeyCap { objectName: "editPreview"; glyph: "clapperboard"; caption: strip.width >= 1150 ? L.t.es_result : ""
+        KeyCap { objectName: "editPreview"; glyph: "eye"; caption: strip.width >= 1000 ? L.t.es_result : ""
                  latched: editor.previewing >= 0
                  tip: L.t.es_preview; enabled: strip.frags.length > 0
                  anchors.verticalCenter: parent.verticalCenter
                  onClicked: actions.run("edit_preview") }
-        // the editor closes (Esc does the same); the edit stays for Ctrl+E
-        KeyCap { objectName: "editClose"; flat: true; glyph: Theme.icClose; caption: strip.width >= 1150 ? L.t.es_close : ""
-                 tip: L.t.es_close_tip
-                 anchors.verticalCenter: parent.verticalCenter
-                 onClicked: editor.close() }
         // saves at once beside the source; «Save as…» on the right button
         KeyCap { objectName: "editSave"; accent: true
                  glyph: editor.exporting ? Theme.icCancel : "upload"

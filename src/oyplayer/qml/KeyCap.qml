@@ -2,7 +2,7 @@ import QtQuick
 
 // A rubber key cap: light along its top, a soft shadow under it; travels down 1px when pressed.
 // `latched` keys stand as the others with their sign in the accent (subtitles on, sound off…).
-// `accent` is the one coloured key on the panel, as on a Braun calculator.
+// `accent` is the one coloured key on the panel, as on a desk calculator.
 // The sign is a Lucide icon by name (icons.py), drawn for the screen's own pixels.
 Item {
     id: key

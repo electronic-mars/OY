@@ -44,6 +44,7 @@ _OBSERVED = {
     "sub-scale": ("subScale", 1.0),
     "dwidth": ("videoW", 0),
     "dheight": ("videoH", 0),
+    "container-fps": ("fps", 0.0),
     "aid": ("aid", False),
     "audio-delay": ("audioDelay", 0.0),
     "pitch": ("pitch", 1.0),
@@ -201,6 +202,7 @@ class Player(QObject):
     subScale = _mirror("subScale")
     videoW = _mirror("videoW")
     videoH = _mirror("videoH")
+    fps = _mirror("fps")
     aid = _mirror("aid")
     audioDelay = _mirror("audioDelay")
     pitch = _mirror("pitch")

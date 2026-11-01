@@ -20,7 +20,7 @@ Popup {
         { title: L.t.p_playback, icon: Theme.icPlay }, { title: L.t.p_window, icon: Theme.icWindow },
         { title: L.t.p_sound, icon: Theme.icVolume }, { title: L.t.p_subs, icon: Theme.icCaptions },
         { title: L.t.p_controls, icon: Theme.icKeyboard }, { title: L.t.p_shots, icon: Theme.icCamera },
-        { title: L.t.about, icon: Theme.icInfo }]
+        { title: L.t.p_skins, icon: Theme.icPalette }, { title: L.t.about, icon: Theme.icInfo }]
     // what «Defaults» puts back in each section (the language, the key list and the file types
     // in Windows are left as they are: each has its own way back)
     readonly property var sectionKeys: [
@@ -30,6 +30,7 @@ Popup {
         ["subsOn", "subScale", "subLang", "subFolders"],
         ["wheel", "leftClick", "middleClick", "doubleClick", "sideButtons", "preview", "globalMedia", "seekStep", "jumpStep"],
         ["shotFormat", "shotQuality", "shotDir", "exportCodec", "mpvOptions"],
+        ["skin"],
         []]
 
     component Card: Rectangle {
@@ -68,7 +69,7 @@ Popup {
                             border.color: on ? Theme.lineHi : "transparent"
                             // About in the accent while a newer version waits
                             Icon { x: 12; anchors.verticalCenter: parent.verticalCenter; name: modelData.icon
-                                   size: 16; color: parent.on || (index === 6 && updater.state === "available") ? Theme.accText : Theme.tx3 }
+                                   size: 16; color: parent.on || (index === 7 && updater.state === "available") ? Theme.accText : Theme.tx3 }
                             Text { x: 38; anchors.verticalCenter: parent.verticalCenter; text: modelData.title
                                    font.family: Theme.uiFont; font.pixelSize: 13; color: parent.on ? Theme.tx : Theme.tx2 }
                             MouseArea { anchors.fill: parent; onClicked: { actions.stopCapture(); sp.section = index; flick.contentY = 0 } }
@@ -140,7 +141,7 @@ Popup {
             Item {
                 id: pages
                 width: flick.width - 10
-                height: [p0, p1, p2, p3, p4, p5, p6][sp.section].height
+                height: [p0, p1, p2, p3, p4, p5, p6, p7][sp.section].height
 
                 // 1. Playback
                 Column {
@@ -482,9 +483,53 @@ Popup {
                     }
                 }
 
-                // 7. About
+                // 7. Skins: each one as its panel looks, a click puts it on; a locked one (paid, no
+                // licence here) shows itself but cannot be chosen
                 Column {
-                    id: p6; visible: sp.section === 6; width: parent.width; spacing: 10
+                    id: p6; objectName: "skinsPage"; visible: sp.section === 6; width: parent.width; spacing: 10
+                    Text { width: parent.width; wrapMode: Text.WordWrap; leftPadding: 4; rightPadding: 4
+                           text: L.t.s_skin_h; color: Theme.tx2; font.family: Theme.uiFont; font.pixelSize: 12 }
+                    Repeater {
+                        model: skins.items
+                        Rectangle {
+                            id: skinCard
+                            objectName: "skin_" + modelData.id
+                            readonly property bool chosen: skins.current === modelData.id     // worn, not just saved
+                            width: p6.width; height: shot.y + shot.height + 12
+                            radius: 12
+                            color: skinArea.containsMouse && !modelData.locked ? Theme.panelHi : Theme.card
+                            border.color: chosen ? Theme.accA(.85) : skinArea.containsMouse ? Theme.lineHi : Theme.line
+                            border.width: chosen ? 2 : 1
+                            Text { x: 14; y: 10; text: modelData.name[i18n.lang] || modelData.name.en
+                                   color: modelData.locked ? Theme.tx2 : Theme.tx
+                                   font.family: Theme.uiFont; font.pixelSize: 13; font.weight: Font.DemiBold }
+                            Row {
+                                anchors { right: parent.right; rightMargin: 14 }
+                                y: 10; spacing: 6
+                                Text { visible: modelData.locked; text: L.t.skin_locked; color: Theme.tx3
+                                       font.family: Theme.uiFont; font.pixelSize: 12 }
+                                Icon { visible: modelData.locked || skinCard.chosen; size: 15
+                                       name: modelData.locked ? Theme.icLock : Theme.icCheck; stroke: 2
+                                       color: modelData.locked ? Theme.tx3 : Theme.accText }
+                            }
+                            // the panel as the skin draws it (shot by the self-test, sealed in the file)
+                            Image {
+                                id: shot
+                                x: 12; y: 36; width: parent.width - 24
+                                height: implicitWidth > 0 ? Math.round(width * implicitHeight / implicitWidth) : 0
+                                source: modelData.preview
+                                fillMode: Image.PreserveAspectFit; smooth: true; mipmap: true
+                                opacity: modelData.locked ? .45 : 1
+                            }
+                            MouseArea { id: skinArea; anchors.fill: parent; hoverEnabled: true; enabled: !modelData.locked
+                                        cursorShape: Qt.PointingHandCursor; onClicked: settings.set("skin", modelData.id) }
+                        }
+                    }
+                }
+
+                // 8. About
+                Column {
+                    id: p7; visible: sp.section === 7; width: parent.width; spacing: 10
                     Card { AboutPage { objectName: "aboutPage"; width: parent.width } }
                 }
             }

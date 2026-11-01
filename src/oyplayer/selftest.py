@@ -371,7 +371,7 @@ class SelfTest(QObject):
             (0, keym("O", Qt.AltModifier)), (300, self.s_skip_off), (1800, self.s_skip_off_chk), (0, keym("O", Qt.AltModifier)),
             # the viewing history: what was watched in this run, newest first; a double click plays it
             (0, keym("H", Qt.ControlModifier)), (700, self.s_hist_shown), (1800, self.s_hist_played),
-            # the scheduler: the clock in the title bar; shutdown is only recorded in a self-test
+            # the scheduler: the clock key on the panel; shutdown is only recorded in a self-test
             (0, self.s_sch_open), (600, self.s_sch_menu), (400, self.s_sch_when), (400, self.s_sch_armed),
             (1500, self.s_sch_counting), (2600, self.s_sch_powered),
             (0, self.s_sch_cancel_prep), (1500, self.s_sch_cancel_click), (2600, self.s_sch_cancelled),
@@ -414,10 +414,11 @@ class SelfTest(QObject):
             "fb3": self.fb3_steps,     # release blockers: failures said, streams reconnected
             "st1": self.st1_steps,     # stage 1: nothing slow on the GUI thread
             "st3": self.st3_steps,     # stage 3: keyboard areas and the screen reader
-            "st4": self.st4_steps,     # stage 4: the Braun panel, an honest edit
+            "st4": self.st4_steps,     # stage 4: the panel, an honest edit
             "tails": self.tails_steps,     # the tails of stages 1-4
             "fb4": self.fb4_steps,     # feedback 4 (0.11.1): the mouse, settings, the picture card
             "upd": self.upd_steps,     # the update from the release page
+            "skins": self.skins_steps,     # sealed skins: each drawn in the real window, the default back
         }
         # tests\next-run-focus (used up like next-run-exe): the quick part and only the blocks it
         # names; empty, the quick part alone. Without it, everything.
@@ -1639,7 +1640,7 @@ class SelfTest(QObject):
         self.click("keyScheduler")
 
     def s_sch_menu(self):
-        self.check("the clock in the title bar opens the scheduler",
+        self.check("the clock key on the panel opens the scheduler",
                    self.win.findChild(QObject, "schedMenu").property("visible") is True)
         self.shot("m8_04_scheduler")
         self.click_item(self.find_text("Shut down the computer"))
@@ -1887,7 +1888,7 @@ class SelfTest(QObject):
 
     def s_about(self):
         self.win.findChild(QObject, "settingsPanel").setProperty("visible", True)
-        QTimer.singleShot(200, lambda: self.click_item(self.find_item("nav6")))
+        QTimer.singleShot(200, lambda: self.click_item(self.find_item("nav7")))
 
     def s_about_shot(self):
         page = self.find_item("aboutPage")
@@ -1913,9 +1914,13 @@ class SelfTest(QObject):
         long_mkv = str(Path(self.media).parent / "test_long.mkv")
         return [
             (0, self.s_fb_prep),
-            # the time scale, on test720.mp4 (20 s) and test_long.mkv (90 s)
-            (0, lambda: self.pl.add([self.media], True)), (1800, lambda: self.s_fb_scale(10)),
-            (0, lambda: self.pl.add([long_mkv], True)), (1800, lambda: self.s_fb_scale(10)), (0, self.s_fb_ruler),
+            # the time scale, on test720.mp4 (20 s) and test_long.mkv (90 s), in the owner's 1280 px
+            # window (at the narrowest, 760 px, 90 s steps by 15 s: labels three labels' width apart);
+            # an opened file fits the window to itself, so the width is set after it
+            (0, lambda: setattr(self, "fb_width", self.win.width())),
+            (0, lambda: self.pl.add([self.media], True)), (1800, lambda: self.win.setWidth(1280)), (500, lambda: self.s_fb_scale(10)),
+            (0, lambda: self.pl.add([long_mkv], True)), (1800, lambda: self.win.setWidth(1280)), (500, lambda: self.s_fb_scale(10)),
+            (0, self.s_fb_ruler), (0, lambda: self.win.setWidth(self.fb_width)),
             # screenshot colours on SMPTE bars, limited range, then full range
             (0, lambda: self.pl.add([bars], True)), (1500, self.s_fb_bars_seek), (900, lambda: self.key("F12")),
             (900, lambda: self.s_fb_bars(bars, "limited")), (0, self.s_fb_caps),
@@ -2076,10 +2081,11 @@ class SelfTest(QObject):
             r, cx = w / 2, x0 + w / 2
             for row in range(6):
                 y = int(y0) + row
-                bg = img.pixelColor(int(x0) - 8, y).getRgb()[:3]
+                # the panel on either side (right of the play key it is the lighter transport well)
+                bg = max(sum(img.pixelColor(int(x0) - 8, y).getRgb()[:3]), sum(img.pixelColor(int(x0 + w) + 8, y).getRgb()[:3]))
                 # what is lighter than the panel there: the cap and its light (its shadow is darker)
                 xs = [x for x in range(int(x0) - 2, int(x0 + w) + 2)
-                      if sum(img.pixelColor(x, y).getRgb()[:3]) - sum(bg) > 18]
+                      if sum(img.pixelColor(x, y).getRgb()[:3]) - bg > 18]
                 # a filled, smoothed circle touches a row as wide as its chord at the row's lower edge
                 chord = 2 * math.sqrt(max(0.0, r * r - (r - row - 1) ** 2))
                 if xs and xs[-1] - xs[0] + 1 > chord + 1.5:
@@ -2189,8 +2195,13 @@ class SelfTest(QObject):
         return hues
 
     def key_hue(self, img, name="keyPlay"):
+        """[L, C, h] of the play key's accent: the middle one of its coloured pixels (the lit rim,
+        the glow, the sign); the cap itself is graphite."""
         x0, y0, w, h = self.scene_rect(self.find_item(name))
-        return self.oklch_of(img.pixelColor(int(x0 + w / 2), int(y0 + h * 0.82)))
+        lit = sorted((self.oklch_of(img.pixelColor(x, y)) for y in range(int(y0), int(y0 + h))
+                      for x in range(int(x0), int(x0 + w))), key=lambda c: c[2])
+        lit = [c for c in lit if c[1] > 0.08 and c[0] > 0.4]
+        return lit[len(lit) // 2] if lit else (0, 0, -1000)
 
     def s_fb_accent_panel(self):
         img = capture(int(self.win.winId()))
@@ -2301,6 +2312,9 @@ class SelfTest(QObject):
             (300, ui("drawRect")), (0, seek(45.0)), (700, draw([(0.1, 0.8), (0.15, 0.85), (0.2, 0.9)])),
             (300, ui("drawSelect")), (300, self.s_fb2_lay_short), (0, seek(34.5)), (0, self.park),
             (900, self.s_fb2_lay_tracks), (500, self.s_fb2_lay_bars),
+            # the same in a wide window: the names, the times on the bars, the strip's words
+            (0, lambda: (setattr(self, "fb2_w", self.win.width()), self.win.setWidth(1400))),
+            (900, lambda: self.shot("fb2_10_layers_wide")), (0, lambda: self.win.setWidth(self.fb2_w)), (600, lambda: None),
             # the frame and the bars point at each other
             (0, lambda: self.find_item("noteLayer").setOpacity(0)), (400, self.s_fb2_bare),
             (0, lambda: QTest.mouseMove(self.win, self.bar_pt(1, 0.75))), (800, self.s_fb2_hover_bar),
@@ -2532,7 +2546,7 @@ class SelfTest(QObject):
 
     def s_fb2_ring(self):
         img = capture(int(self.win.winId()))
-        x0, y0, _w, h = self.scene_rect(self.find_item("ink0"))
+        x0, y0, _w, h = self.scene_rect(self.find_item("ink2"))     # the orange, chosen by default
         dpr = self.win.devicePixelRatio()
         ring = self.oklch_of(img.pixelColor(int(x0 + 1 * dpr), int(y0 + h / 2)))
         gap = self.oklch_of(img.pixelColor(int(x0 + 3 * dpr), int(y0 + h / 2)))
@@ -2607,8 +2621,8 @@ class SelfTest(QObject):
 
     @staticmethod
     def span_of(text):
-        """(start, end, length) read from the times shown for a drawing: «0:32.0 – 0:36.0 · 4.0 s»."""
-        m = re.fullmatch(r"(\d+):(\d\d\.\d) – (\d+):(\d\d\.\d) · (\d+\.\d) s", text or "")
+        """(start, end, length) read from the times shown for a drawing: «0:32.0 – 0:36.0 (4.0 s)»."""
+        m = re.fullmatch(r"(\d+):(\d\d\.\d) – (\d+):(\d\d\.\d) \((\d+\.\d) s\)", text or "")
         return (int(m[1]) * 60 + float(m[2]), int(m[3]) * 60 + float(m[4]), float(m[5])) if m else None
 
     def s_fb2_lay_prep(self):
@@ -2648,16 +2662,27 @@ class SelfTest(QObject):
         dpr = self.win.devicePixelRatio()
         x0, x1, xb = self.lane_x(32.0), self.lane_x(36.0), int(self.lane_x(35.2))   # xb: a bar's body, right of its signs
         y0, y1 = self.bar_mid(0), self.bar_mid(1)
-        sel, body = self.oklch_of(img.pixelColor(xb, y0)), self.oklch_of(img.pixelColor(xb, y1))
-        ink = self.cdist(img.pixelColor(xb, y1), (0xF2, 0x6A, 0x21))
-        bar0 = self.find_item("noteBar0")
-        ring_y = int(bar0.mapToScene(QPointF(0, 0)).y() * dpr)          # the chosen bar's top edge
-        ring = max(self.oklch_of(img.pixelColor(xb, y))[0] for y in range(ring_y - 1, ring_y + 2))
-        words = sum(1 for y in range(y1 - 4, y1 + 5) for x in range(int(x0 + 12 * dpr), int(x0 + 40 * dpr))
-                    if self.cdist(img.pixelColor(x, y), img.pixelColor(xb, y1)) > 60)
-        self.check("the bars are in the drawing's own ink with its times written on them; the chosen one is ringed in white",
-                   ink < 30 and ring > 0.9 and words >= 8,
-                   f"bar off the ink by {ink:.0f} chosen bar's edge L={ring:.2f} written pixels={words}")
+        xm = int(self.lane_x(34.0))      # the bars' middle: clear of the grips (and, this narrow, of words)
+
+        def edge(i):
+            """The bar's outline down from its top edge: how many rows of it, its colour, the veil's."""
+            top = int(self.find_item(f"noteBar{i}").mapToScene(QPointF(0, 0)).y() * dpr)
+            veil = img.pixelColor(xm, top + int(5 * dpr))
+            rows = [y for y in range(top - 1, top + int(4 * dpr)) if self.cdist(img.pixelColor(xm, y), veil) > 30]
+            return len(rows), img.pixelColor(xm, rows[0]) if rows else veil, veil
+        rows0, _c0, _v0 = edge(0)
+        rows1, line1, veil1 = edge(1)
+        ground = img.pixelColor(int(self.lane_x(28.0)), y1)
+        ink = self.cdist(line1, (0xF2, 0x6A, 0x21))
+        # the times are written on a bar wide enough for them (this window: none of the four)
+        wide = self.find_item("noteBar1").width() > 40
+        words = sum(1 for y in range(y1 - 4, y1 + 5) for x in range(int(x0 + 10 * dpr), int(x1 - 10 * dpr))
+                    if self.cdist(img.pixelColor(x, y), veil1) > 60)
+        self.check("the bars are an outline in the drawing's own ink round a veil of it, with its times written in it; "
+                   "the chosen one's outline is doubled",
+                   ink < 30 and self.cdist(veil1, ground) > 8 and (words >= 8 or not wide) and rows0 > rows1 >= 1,
+                   f"outline off the ink by {ink:.0f}, veil off the ground by {self.cdist(veil1, ground):.0f}; "
+                   f"outline rows: chosen {rows0}, other {rows1}; written pixels={words} (bar wide enough: {wide})")
         ground = img.pixelColor(int(self.lane_x(28.0)), y1)
         cols = [x for x in range(int(x0) - 8, int(x1) + 9) if self.cdist(img.pixelColor(x, y1), ground) > 6]
         y4, x45 = self.bar_mid(4), self.lane_x(45.0)
@@ -2675,17 +2700,21 @@ class SelfTest(QObject):
                   if self.oklch_of(img.pixelColor(x, y))[0] > 0.75)
         rail = self.find_item("seekRail")
         r0, r1 = (int(rail.mapToScene(QPointF(0, v)).y() * dpr) for v in (0, rail.height()))
-        line = sum(1 for y in range(r0, r1) if self.cdist(img.pixelColor(round(x0), y), img.pixelColor(round(x0) - 4, y)) > 10)
+        # down each end's column through the clip track: a fragment's number lies on a plate over
+        # the line (the words are never crossed), so the line is counted at the end it shows best
+        ends = [sum(1 for y in range(r0, r1) if self.cdist(img.pixelColor(round(x), y), img.pixelColor(round(x) - 4, y)) > 10)
+                for x in (x0, x1 - 1)]
+        line = max(ends)
         # the scale's own labels it lies over are not left cut in half beside it
         tag = self.scene_rect(label.parentItem()) if label else (0, 0, 0, 0)
         cut = [it.property("text") for it in self.find_item("scaleMarks").childItems()
                if it.objectName().startswith("scaleLabel") and it.isVisible()
                and self.scene_rect(it)[0] < tag[0] + tag[2] and self.scene_rect(it)[0] + self.scene_rect(it)[2] > tag[0]]
         self.check("the chosen drawing's times show on the scale at once, in tenths, between lines up from its ends",
-                   text == "0:32.0 – 0:36.0 · 4.0 s" and label.isVisible() and self.inside_window(label) and lit > 15
+                   text == "0:32.0 – 0:36.0 (4.0 s)" and label.isVisible() and self.inside_window(label) and lit > 15
                    and line >= (r1 - r0) * 0.6 and not cut,
                    f"label={text!r} at {lx:.0f},{ly:.0f} {lw:.0f}x{lh:.0f} light pixels={lit}; "
-                   f"line through the seek bar on {line} of {r1 - r0} rows; scale labels under it, cut={cut}")
+                   f"line through the seek bar on {ends} of {r1 - r0} rows; scale labels under it, cut={cut}")
         self.shot("fb2_10_layers")
 
     def s_fb2_bare(self):
@@ -2715,7 +2744,8 @@ class SelfTest(QObject):
         self.shot("fb2_11_hover_bar")
 
     def s_fb2_hover_frame(self):
-        img, y, x = capture(int(self.win.winId())), self.bar_mid(1), int(self.lane_x(35.2))
+        # the veil over the words, inside the outline
+        img, y, x = capture(int(self.win.winId())), self.bar_mid(1) - int(6 * self.win.devicePixelRatio()), int(self.lane_x(35.2))
         before, now = self.oklch_of(self.lay_drawn.pixelColor(x, y))[0], self.oklch_of(img.pixelColor(x, y))[0]
         self.check("hovering a drawing on the frame lights its bar", now > before + 0.03, f"bar L {before:.2f} -> {now:.2f}")
         self.shot("fb2_12_hover_frame")
@@ -3297,7 +3327,7 @@ class SelfTest(QObject):
         from PySide6.QtGui import QAccessible
         tree = self.a11y()
         keys = [(r, n) for r, n, _d, s, o in tree
-                if o is not None and o.metaObject().className().startswith("KeyCap") and not s.invisible]
+                if o is not None and o.metaObject().className().startswith(("KeyCap", "PlayKey")) and not s.invisible]
         unnamed = [n for r, n in keys if r != QAccessible.Button or not n.strip()]
         seek = [(r, n, d) for r, n, d, _s, o in tree if o is not None and o.objectName() == "seekRail"]
         tips = [n for _r, n, _d, _s, o in tree if o is not None and o.objectName() == "tip"]
@@ -3417,7 +3447,7 @@ class SelfTest(QObject):
         self.win.setProperty("area", "")
         self.win.setProperty("playlistShown", False)
 
-    # ---- stage 4: the Braun panel (council stage 3) and an honest edit (council stage 4, the
+    # ---- stage 4: the panel (council stage 3) and an honest edit (council stage 4, the
     # blind comparison): one colour, one meaning; what goes into the file is seen before saving
     def st4_steps(self):
         long_mkv = str(Path(self.media).parent / "test_long.mkv")
@@ -3463,7 +3493,7 @@ class SelfTest(QObject):
                    f"left on the panel={gone} prev shown={prev.isVisible()} list={self.pl.count}")
         names = ("keySettings", "keyPlay", "keyFast", "keySound", "keyShot", "keyEdit", "keyPrev", "keyPlaylist", "keyNext")
         caps = {n: self.find_item(n).property("flat") for n in names}
-        self.check("every key of the panel is a rubber cap (the Braun concept)",
+        self.check("every key of the panel is a rubber cap (the concept)",
                    all(v is False for v in caps.values()), f"flat={caps}")
         keys, shot = self.find_item("keyPlay").parentItem().parentItem(), self.find_item("keyShot")
         lcd, vol, edit = self.find_item("lcdTime"), self.find_item("volume"), self.find_item("keyEdit")
@@ -3523,14 +3553,19 @@ class SelfTest(QObject):
         self.check("the edit holds the whole file at once; nothing to save yet",
                    self.frags() == [("test_long.mkv", 0.0, 90.0)] and not self.ed.edited
                    and self.find_item("editSave").isEnabled() is False, f"frags={self.frags()} edited={self.ed.edited}")
-        self.check("the strip's keys read as a ruler |← ✂ →| and a bin, signs not letters; their hints say what they take away",
+        caps = [k.property("caption") for k in keys]
+        capsule = self.find_item("cutCapsule")
+        self.check("the strip's keys read as a ruler |← ✂ →| and a bin in one capsule, signs not letters, only the "
+                   "scissors say «Cut»; their hints say what they take away",
                    signs == ["arrow-left-to-line", "scissors", "arrow-right-to-line", "trash-2"]
-                   and all(k.property("label") == "" and k.property("caption") == "" for k in keys)
-                   and all(k.property("tip") for k in keys),
-                   f"signs={signs} tips={[k.property('tip') for k in keys]}")
+                   and caps == ["", "Cut", "", ""] and all(k.property("label") == "" for k in keys)
+                   and all(k.property("tip") for k in keys) and capsule is not None
+                   and all(k.parentItem().parentItem() == capsule for k in keys),
+                   f"signs={signs} captions={caps} tips={[k.property('tip') for k in keys]}")
         res = self.find_item("editPreview")
-        self.check("the finished video's key says «Result»", res.property("caption") == "Result"
-                   and res.property("glyph") == "clapperboard", f"caption={res.property('caption')!r}")
+        self.check("the finished video's key is an eye that says «Result»; no separate Close key (the badge's × and Esc)",
+                   res.property("caption") == "Result" and res.property("glyph") == "eye"
+                   and self.find_item("editClose") is None, f"caption={res.property('caption')!r} glyph={res.property('glyph')!r}")
 
     def s_st4_preview(self):
         frags = self.ed.fragments
@@ -3547,14 +3582,14 @@ class SelfTest(QObject):
                    all(o is not None and o.property("visible") is True for o in outside),
                    f"outside={[o is not None for o in outside]}")
         line = (summary.property("text") if summary else "") + (self.find_item("editMode").property("text") or "")
-        self.check("one line says what goes into the file: «To the file: 2 fragments · LOSSLESS»",
-                   summary is not None and summary.property("visible") is True and line == "To the file: 2 fragments · LOSSLESS",
+        self.check("one line in a frame says what goes into the file: «0:25.0 •  2 fragments  · LOSSLESS»",
+                   summary is not None and summary.property("visible") is True and line == "•  2 fragments  ·LOSSLESS",
                    f"line={line!r} fragments={len(frags)}")
         head = self.find_item("codecTitle")
         seg = self.find_item("editCodec")
         cut = [t for t in self.texts_in(seg) if t.property("implicitWidth") > t.parent().property("width") - 4]
-        self.check("the codec choice is titled «Encoding» and no option is cut off",
-                   head is not None and head.property("text") == "Encoding" and not cut,
+        self.check("the codec choice is titled «ENCODING» inside its frame and no option is cut off",
+                   head is not None and head.property("text") == "ENCODING" and head.isVisible() and not cut,
                    f"title={head and head.property('text')!r} cut={[t.property('text') for t in cut]}")
         self.shot("st4_03_edit")
         self.a.run("edit_preview")
@@ -4054,10 +4089,11 @@ class SelfTest(QObject):
         g = lambda k: k.property("glyph")
         sign = self.find_item("sign", play)
         self.check("the transport signs are one family of line icons (Lucide), play and pause filled and drawn sharp",
-                   g(play) in ("play", "pause") and play.property("solid") is True and g(prev) == "skip-back"
+                   play.property("sign") in ("play", "pause") and sign is not None and sign.property("solid") is True
+                   and g(prev) == "skip-back"
                    and g(nxt) == "skip-forward" and g(ff) == "fast-forward" and sign is not None
                    and sign.property("progress") == 1.0 and sign.property("source").toString().startswith("image://icon/"),
-                   f"play={g(play)!r} prev={g(prev)!r} next={g(nxt)!r} "
+                   f"play={play.property('sign')!r} prev={g(prev)!r} next={g(nxt)!r} "
                    f"sign={sign is not None and (sign.property('progress'), sign.property('source').toString())}")
         font = self.find_item("scaleMarks").property("font")
         self.check("the time scale's labels are 10 px of IBM Plex Mono", font.pixelSize() == 10 and font.family() == "IBM Plex Mono",
@@ -4153,6 +4189,140 @@ class SelfTest(QObject):
 
     # ---- the update (updater.py, update.py): a release page on 127.0.0.1 stands in for GitHub,
     # and a throwaway key for the release key
+    def skins_steps(self):
+        ids = ["classic", "studio", "switcher", "deck"]
+        steps = [(0, lambda: self.pl.add([self.media], True)), (1500, self.s_sk_prep), (600, self.s_sk_default)]
+        for sid in ids:
+            steps += [(0, lambda sid=sid: self.settings.set("skin", sid)), (700, lambda sid=sid: self.s_sk_drawn(sid))]
+        return steps + [
+            # a skin's dark palette only: the cream body keeps the default's, the parts stay the skin's
+            (0, lambda: self.settings.set("skin", "studio")), (0, lambda: self.settings.set("theme", "light")),
+            (700, lambda: self.shot("sk_studio_light")), (0, lambda: self.settings.set("theme", "dark")),
+            # the drawing tools over the middle of the picture in the studio family
+            (0, lambda: None if self.ed.active else self.ed.toggle()), (900, self.s_sk_edit),
+            # editing hides the panel: the scheduler and on top are in the title bar, the menu drops down
+            (0, lambda: QMetaObject.invokeMethod(self.win, "openSchedMenu")), (500, self.s_sk_edit_clock),
+            (0, lambda: QMetaObject.invokeMethod(self.win.findChild(QObject, "schedMenu"), "close")),
+            (0, lambda: self.ed.close()), (0, lambda: self.settings.set("skin", "default")), (700, self.s_sk_back),
+            (0, lambda: self.click("keySettings")), (600, lambda: self.settings_page(6, "skin_default")),
+            (900, self.s_sk_settings), (0, lambda: self.scroll_to("skin_studio")),
+            (400, lambda: self.click_item(self.find_item("skin_studio"))), (500, self.s_sk_picked),
+            (0, lambda: self.settings.set("skin", "default")), (0, lambda: self.key("Esc")),
+            (0, lambda: self.win.resize(self.sk_size)),
+            # the time's right button copies it as it reads
+            (300, self.s_sk_copy), (300, self.s_sk_copied),
+        ]
+
+    def s_sk_copy(self):
+        QGuiApplication.clipboard().setText("")
+        lcd = self.find_item("lcdTime")
+        c = lcd.mapToScene(QPointF(lcd.width() / 2, lcd.height() / 2))
+        QTest.mouseClick(self.win, Qt.RightButton, Qt.NoModifier, QPoint(int(c.x()), int(c.y())))
+
+    def s_sk_copied(self):
+        lcd, got = self.find_item("lcdTime"), QGuiApplication.clipboard().text()
+        self.check("a right click on the time copies it as it reads, and the hint says so",
+                   got != "" and got == lcd.property("now") and "right click" in lcd.property("tip"),
+                   f"clipboard={got!r} lcd={lcd.property('now')!r}")
+
+    def s_sk_prep(self):
+        sk = self.m8["skins"]
+        self.park()
+        self.p.mpv.pause = True
+        ids = [i["id"] for i in sk.items]
+        locked = [i["id"] for i in sk.items if i["locked"]]
+        self.check("the player finds its default and the four sealed skins it comes with, none locked, "
+                   "each with a picture of its panel",
+                   ids == ["default", "classic", "deck", "studio", "switcher"] and not locked
+                   and all(i["preview"] for i in sk.items), f"ids={ids} locked={locked}")
+        # the pictures for the list are shot at the narrowest window, where the keys read best
+        self.sk_size = self.win.size()
+        self.win.resize(self.win.minimumWidth(), self.win.height())
+
+    def sk_panel(self, sid):
+        """The panel as drawn now; its row of keys, a little round it, is kept as the skin's picture
+        for the list (tools/skin_pack.py)."""
+        img, dpr = capture(int(self.win.winId())), self.win.devicePixelRatio()
+        panel, keys = self.find_item("panel"), self.find_item("panelKeys")
+        top, bottom = keys.mapToScene(QPointF(0, 0)).y() - 7, keys.mapToScene(QPointF(0, keys.height())).y() + 7
+        left = panel.mapToScene(QPointF(0, 0)).x()
+        img.copy(QRect(round(left * dpr), round(top * dpr), round(panel.width() * dpr),
+                       round((bottom - top) * dpr))).save(str(self.out / f"skinprev_{sid}.png"))
+        return self.region(img, panel)
+
+    def sk_keys_right(self, name):
+        clock, pin, nxt = self.find_item("keyScheduler"), self.find_item("keyOnTop"), self.find_item("keyPlaylist")
+        x = lambda it: it.mapToScene(QPointF(0, 0)).x()
+        self.check(f"{name}: the scheduler and on top are keys on the panel's right, before the list's",
+                   clock.isVisible() and pin.isVisible() and x(clock) > self.win.width() / 2
+                   and x(clock) < x(pin) < x(nxt), f"clock={x(clock):.0f} pin={x(pin):.0f} list={x(nxt):.0f}")
+
+    def s_sk_default(self):
+        self.sk_default = self.sk_panel("default")
+        self.sk_keys_right("the default skin")
+        well, play, edit = self.find_item("transportWell"), self.find_item("keyPlay"), self.find_item("keyEdit")
+        x = lambda it, dx=0: it.mapToScene(QPointF(dx, 0)).x()
+        self.check("the default skin: one well from the play key's middle to past the editor's key",
+                   well.isVisible() and abs(x(well) - x(play, play.width() / 2)) <= 1
+                   and 0 < x(well, well.width()) - x(edit, edit.width()) <= 10,
+                   f"well={x(well):.0f}..{x(well, well.width()):.0f} play mid={x(play, play.width() / 2):.0f} "
+                   f"edit end={x(edit, edit.width()):.0f}")
+        self.shot("sk_default")
+
+    def s_sk_drawn(self, sid):
+        look = self.m8["skins"].look
+        parts = look.get("parts", {})
+        play, settings_key = self.find_item("keyPlay"), self.find_item("keySettings")
+        knob, rail = self.find_item("volumeKnob"), self.find_item("volume")
+        right = settings_key.parentItem() is not play.parentItem()
+        self.check(f"skin {sid}: opened and drawn — the well {parts.get('well', 'transport')}, the settings key "
+                   f"{'right' if right else 'left'}, the volume as a {'knob' if knob.isVisible() else 'rail'}",
+                   sid in self.m8["skins"]._looks and play.isVisible() and play.width() > 0
+                   and right == (parts.get("settings") == "right")
+                   and knob.isVisible() == (parts.get("volume") == "knob") and rail.isVisible() != knob.isVisible(),
+                   f"parts={parts} right={right} knob={knob.isVisible()}")
+        self.sk_keys_right(f"skin {sid}")
+        self.sk_panel(sid)
+        self.shot(f"sk_{sid}")
+
+    def s_sk_edit(self):
+        bar, layer = self.find_item("drawBar"), self.find_item("noteLayer")
+        mid = bar.mapToScene(QPointF(bar.width() / 2, 0)).x()
+        want = layer.mapToScene(QPointF(layer.width() / 2, 0)).x() if layer and layer.isVisible() else self.win.width() / 2
+        self.check("the studio skins: the drawing tools stand over the middle of the picture",
+                   abs(mid - want) <= 2, f"bar middle={mid:.0f} picture middle={want:.0f}")
+        self.shot("sk_studio_edit")
+
+    def s_sk_edit_clock(self):
+        clock, pin, menu = (self.find_item("titleScheduler"), self.find_item("titleOnTop"),
+                            self.win.findChild(QObject, "schedMenu"))
+        title_h = self.win.property("titleH")
+        self.check("editing: the clock and the pin are in the title bar, Shift+T's menu drops down from it",
+                   clock is not None and clock.isVisible() and pin is not None and pin.isVisible()
+                   and menu.property("visible") is True and menu.property("y") >= title_h,
+                   f"clock={clock is not None and clock.isVisible()} pin={pin is not None and pin.isVisible()} "
+                   f"menu visible={menu.property('visible')} y={menu.property('y')} title={title_h}")
+        self.shot("sk_edit_clock")
+
+    def s_sk_back(self):
+        img = capture(int(self.win.winId()))
+        diff = self.mean_diff(self.region(img, self.find_item("panel")), self.sk_default)
+        first = self.find_item("keySettings").parentItem().childItems()[0].objectName()
+        self.check("back to the default the panel is as it was before any skin, the settings key first again",
+                   diff < 1.5 and first == "keySettings", f"mean difference={diff:.2f} first={first}")
+
+    def s_sk_settings(self):
+        page, cards = self.find_item("skinsPage"), [self.find_item("skin_" + i["id"]) for i in self.m8["skins"].items]
+        self.check("the settings have a section of skins: a card for each with its panel's picture, the default chosen",
+                   page is not None and page.isVisible() and all(c is not None and c.isVisible() for c in cards)
+                   and cards[0].property("chosen") is True and all(c.height() > 60 for c in cards),
+                   f"cards={[c.height() if c else None for c in cards]}")
+        self.shot("sk_settings")
+
+    def s_sk_picked(self):
+        self.check("a click on a skin's card puts it on", self.settings["skin"] == "studio"
+                   and self.find_item("skin_studio").property("chosen") is True, self.settings["skin"])
+
     def upd_steps(self):
         up = self.m8["updater"]
 
@@ -4229,7 +4399,7 @@ class SelfTest(QObject):
         up._set(state="idle", detail="", percent=0, offered="")
 
     def s_up_found(self):
-        nav = self.find_item("nav6")
+        nav = self.find_item("nav7")
         sign = next((c for c in nav.childItems() if c.property("name") == "info"), None) if nav else None
         self.check("a newer version on the release page: About says so and offers to update",
                    self.up_text() == EN["up_available"].replace("%1", "99.0.0")

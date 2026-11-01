@@ -104,8 +104,12 @@ def verify(path, signature):
     with open(path, "rb") as f:
         for block in iter(lambda: f.read(CHUNK), b""):
             digest.update(block)
-    digest = digest.digest()
+    return verify_digest(digest.digest(), signature, PUBLIC_KEY)
 
+
+def verify_digest(digest, signature, public_key):
+    """Did the private half of public_key (P-256, x||y) sign this SHA-256? The skins
+    (skins.py) check theirs here too, against their own key."""
     alg = ctypes.c_void_p()
     if bcrypt.BCryptOpenAlgorithmProvider(
             ctypes.byref(alg), BCRYPT_ECDSA_P256_ALGORITHM, None, 0) != STATUS_SUCCESS:
@@ -113,7 +117,7 @@ def verify(path, signature):
         return False
     try:
         blob = (BCRYPT_ECDSA_PUBLIC_P256_MAGIC.to_bytes(4, "little")
-                + (32).to_bytes(4, "little") + PUBLIC_KEY)
+                + (32).to_bytes(4, "little") + public_key)
         key = ctypes.c_void_p()
         status = bcrypt.BCryptImportKeyPair(
             alg, None, BCRYPT_ECCPUBLIC_BLOB, ctypes.byref(key),

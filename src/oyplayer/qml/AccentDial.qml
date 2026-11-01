@@ -1,6 +1,6 @@
 import QtQuick
 
-// The one colour, picked the way a Braun radio is tuned: a needle over a glass scale with
+// The one colour, picked the way an old radio is tuned: a needle over a glass scale with
 // the colours printed on it as stations, names staggered above and below as on an old
 // dial. The needle can stop anywhere; near a station it settles on it. The yellow stretch
 // is printed "EDITING": that colour belongs to the editor, so the needle will not stay there.

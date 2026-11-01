@@ -69,11 +69,15 @@ Rectangle {
         height: h
         onTextChanged: requestPaint()
         onHChanged: requestPaint()
+        readonly property var ink: [Theme.lcdInk, Theme.lcdGlow]     // a skin's LCD
+        onInkChanged: requestPaint()
         onPaint: {
             var c = getContext("2d"), g = t * .2, x = 0
             c.reset()
             c.setTransform(1, 0, -lean, 1, h * lean, 0)
             c.fillStyle = Theme.lcdInk
+            // a dark LCD's figures light the glass round them (Theme.lcdGlow)
+            if (Theme.lcdGlow) { c.shadowColor = Theme.lcdInk; c.shadowBlur = h * .35 }
             function poly(pts, on) {
                 c.globalAlpha = on ? 1 : .08
                 c.beginPath()
@@ -122,7 +126,20 @@ Rectangle {
             color: Theme.lcdInk; font.family: Theme.monoFont; font.pixelSize: lcd.small; font.weight: Font.DemiBold
         }
     }
-    MouseArea { id: lcdArea; anchors.fill: parent; hoverEnabled: true; onClicked: lcd.remaining = !lcd.remaining }
+    // the right button copies the time as it reads (the editor's to the hundredth), for a message
+    // or a note (Gemini); QML has no clipboard of its own but a text field's
+    TextEdit { id: clip; visible: false }
+    MouseArea {
+        id: lcdArea; anchors.fill: parent; hoverEnabled: true
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onClicked: (m) => {
+            if (m.button === Qt.LeftButton) { lcd.remaining = !lcd.remaining; return }
+            if (lcd.duration <= 0) return          // nothing loaded: the clipboard keeps what it holds
+            clip.text = lcd.fine ? lcd.now + lcd.hundredths : lcd.now
+            clip.selectAll(); clip.copy()
+            player.osdMessage(L.t.osd_time_copied.arg(clip.text))      // the OSD says it
+        }
+    }
     MouseArea {
         id: speedArea
         visible: lcd.fast
