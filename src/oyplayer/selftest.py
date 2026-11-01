@@ -3563,9 +3563,13 @@ class SelfTest(QObject):
                    and all(k.parentItem().parentItem() == capsule for k in keys),
                    f"signs={signs} captions={caps} tips={[k.property('tip') for k in keys]}")
         res = self.find_item("editPreview")
-        self.check("the finished video's key is an eye that says «Result»; no separate Close key (the badge's × and Esc)",
+        close, strip = self.find_item("editClose"), self.find_item("editStrip")
+        gap = (strip.mapToScene(QPointF(strip.width(), 0)).x() - close.mapToScene(QPointF(close.width(), 0)).x()
+               if close and strip else None)
+        self.check("the finished video's key is an eye that says «Result»; the Close key stands at the strip's far right",
                    res.property("caption") == "Result" and res.property("glyph") == "eye"
-                   and self.find_item("editClose") is None, f"caption={res.property('caption')!r} glyph={res.property('glyph')!r}")
+                   and close is not None and close.isVisible() and gap is not None and abs(gap) <= 1,
+                   f"caption={res.property('caption')!r} glyph={res.property('glyph')!r} close→edge={gap}")
 
     def s_st4_preview(self):
         frags = self.ed.fragments
@@ -4200,7 +4204,7 @@ class SelfTest(QObject):
             (700, lambda: self.shot("sk_studio_light")), (0, lambda: self.settings.set("theme", "dark")),
             # the drawing tools over the middle of the picture in the studio family
             (0, lambda: None if self.ed.active else self.ed.toggle()), (900, self.s_sk_edit),
-            # editing hides the panel: the scheduler and on top are in the title bar, the menu drops down
+            # editing hides the panel and the title bar has no scheduler or on top: Shift+T's menu opens mid-picture
             (0, lambda: QMetaObject.invokeMethod(self.win, "openSchedMenu")), (500, self.s_sk_edit_clock),
             (0, lambda: QMetaObject.invokeMethod(self.win.findChild(QObject, "schedMenu"), "close")),
             (0, lambda: self.ed.close()), (0, lambda: self.settings.set("skin", "default")), (700, self.s_sk_back),
@@ -4294,13 +4298,11 @@ class SelfTest(QObject):
         self.shot("sk_studio_edit")
 
     def s_sk_edit_clock(self):
-        clock, pin, menu = (self.find_item("titleScheduler"), self.find_item("titleOnTop"),
-                            self.win.findChild(QObject, "schedMenu"))
+        menu = self.win.findChild(QObject, "schedMenu")
         title_h = self.win.property("titleH")
-        self.check("editing: the clock and the pin are in the title bar, Shift+T's menu drops down from it",
-                   clock is not None and clock.isVisible() and pin is not None and pin.isVisible()
+        self.check("editing: no clock or pin in the title bar (the player's only), Shift+T's menu still opens below it",
+                   self.find_item("titleScheduler") is None and self.find_item("titleOnTop") is None
                    and menu.property("visible") is True and menu.property("y") >= title_h,
-                   f"clock={clock is not None and clock.isVisible()} pin={pin is not None and pin.isVisible()} "
                    f"menu visible={menu.property('visible')} y={menu.property('y')} title={title_h}")
         self.shot("sk_edit_clock")
 

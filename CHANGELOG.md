@@ -5,6 +5,9 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 
 ## [Unreleased]
 
+### Changed
+- The editor's title bar shows only the EDITING label: the scheduler and on-top keys are the player's alone again, and the editor closes from a key at the right end of the edit strip (or Esc).
+
 ## [0.13.0] - 2026-11-01
 
 ### Added

@@ -240,13 +240,10 @@ Window {
                     { text: L.t.cancel, run: () => scheduler.cancel() })
         return it
     }
-    // While editing the panel's keys are hidden: the scheduler and on top are in the title bar
-    // (the owner chose it over the edit strip, 01.11), the menu drops down from there
+    // while editing the panel's keys are hidden: the menu (by its key) opens mid-picture
     function openSchedMenu() {
         schedMenu.items = schedItems()
-        if (!editor.active) return popMenu(schedMenu, clockKey)
-        const p = titleClock.mapToItem(null, 0, titleClock.height + 6)
-        popMenu(schedMenu, null, Qt.point(p.x, p.y))
+        popMenu(schedMenu, clockKey)
     }
 
     // the opening and the credits, marked on the seek bar's right button (or by keys)
@@ -700,27 +697,16 @@ Window {
         Row {
             anchors { left: parent.left; leftMargin: 6; verticalCenter: parent.verticalCenter }
             spacing: 2
-            IconButton { id: titleClock; objectName: "titleScheduler"; visible: editor.active
-                         glyph: Theme.icClock; latched: scheduler.when !== ""
-                         tip: scheduler.when !== "" ? scheduler.summary : L.t.t_scheduler
-                         onClicked: win.openSchedMenu() }
-            IconButton { objectName: "titleOnTop"; visible: editor.active
-                         glyph: win.onTop ? Theme.icPinned : Theme.icPin; latched: win.onTop
-                         tip: L.t.t_on_top; onClicked: actions.run("on_top") }
-            // editing: the mode says itself in the title bar, in its yellow (the concept)
+            // editing: the mode says itself in the title bar, in its yellow (the concept); it is
+            // closed from the edit strip's right end (the owner, 01.11)
             Rectangle {
                 objectName: "editBadge"
                 visible: editor.active
                 anchors.verticalCenter: parent.verticalCenter
-                width: badgeText.implicitWidth + 30; height: 18; radius: 4
-                color: badgeArea.containsMouse ? Theme.accHi : Theme.acc
+                width: badgeText.implicitWidth + 14; height: 18; radius: 4
+                color: Theme.acc
                 Text { id: badgeText; x: 7; anchors.verticalCenter: parent.verticalCenter; text: L.t.edit_caps; color: Theme.inkOnAcc
                        font.family: Theme.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 1.4 }
-                // where the mode is named, it is left: a click on the badge closes the editor
-                Icon { anchors { right: parent.right; rightMargin: 5; verticalCenter: parent.verticalCenter }
-                       name: Theme.icClose; size: 11; stroke: 2.2; color: Theme.inkOnAcc }
-                MouseArea { id: badgeArea; anchors.fill: parent; hoverEnabled: true; onClicked: editor.close() }
-                Tip { text: L.t.es_close_tip; shown: badgeArea.containsMouse; under: true }
             }
         }
         Text {

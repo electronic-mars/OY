@@ -288,5 +288,9 @@ Item {
         KeyCap { visible: editor.saved !== "" && !editor.exporting; glyph: Theme.icFolder
                  tip: L.t.es_reveal; anchors.verticalCenter: parent.verticalCenter
                  onClicked: editor.revealSaved() }
+        // the way out, at the far right (Esc does it too)
+        KeyCap { objectName: "editClose"; glyph: Theme.icClose; tip: L.t.es_close_tip
+                 anchors.verticalCenter: parent.verticalCenter
+                 onClicked: editor.close() }
     }
 }
