@@ -67,7 +67,7 @@ Item {
         anchors.fill: parent
         spacing: 12
         // the lamp: the play key as it will look
-        KeyCap { id: lamp; round: true; accent: true; glyph: Theme.icPlay; solid: true; glyphShift: 1.5; anchors.verticalCenter: parent.verticalCenter }
+        PlayKey { id: lamp; grow: 0; anchors.verticalCenter: parent.verticalCenter }
 
         Rectangle {
             id: glass

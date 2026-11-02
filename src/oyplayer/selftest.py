@@ -2077,15 +2077,20 @@ class SelfTest(QObject):
         is no wider than the circle there (the straight line of before was 20 px against 15)."""
         img, bad = capture(int(self.win.winId())), []
         for name in ("keyPlay", "keyPlaylist"):
-            x0, y0, w, _h = self.scene_rect(self.find_item(name))
+            item = self.find_item(name)
+            x0, y0, w, _h = self.scene_rect(item)
+            # the play key is drawn past its place by its `grow` (the ring the well had round it)
+            g = (item.property("grow") or 0) * w / item.width()
+            x0, y0, w = x0 - g, y0 - g, w + 2 * g
             r, cx = w / 2, x0 + w / 2
             for row in range(6):
                 y = int(y0) + row
                 # the panel on either side (right of the play key it is the lighter transport well)
                 bg = max(sum(img.pixelColor(int(x0) - 8, y).getRgb()[:3]), sum(img.pixelColor(int(x0 + w) + 8, y).getRgb()[:3]))
-                # what is lighter than the panel there: the cap and its light (its shadow is darker)
+                # what is lighter than the panel there: the cap and its light (its shadow is darker);
+                # the play key's warm halo round its rim is not light on the cap (the graphite is bluish)
                 xs = [x for x in range(int(x0) - 2, int(x0 + w) + 2)
-                      if sum(img.pixelColor(x, y).getRgb()[:3]) - bg > 18]
+                      if sum((c := img.pixelColor(x, y).getRgb())[:3]) - bg > 18 and c[0] <= c[2]]
                 # a filled, smoothed circle touches a row as wide as its chord at the row's lower edge
                 chord = 2 * math.sqrt(max(0.0, r * r - (r - row - 1) ** 2))
                 if xs and xs[-1] - xs[0] + 1 > chord + 1.5:

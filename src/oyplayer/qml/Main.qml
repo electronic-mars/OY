@@ -869,9 +869,10 @@ Window {
             readonly property color wellColour: Qt.tint(Theme.deck, Theme.sunk)     // the sunk tone, opaque
 
             // the wells the keys sit in (Theme.wellStyle). The transport's (the default, Gemini's first
-            // concept): one sunk groove from the play key to the editor's, the play key at its round
-            // head in a dark ring; the deck's: the play key and the speed key sunk together, as the
-            // keys under the screen of Master Audio Switcher
+            // concept): one sunk groove from the play key to the editor's, its round head hidden under
+            // the key (drawn past its place); no dark ring round the key, it read as an outline (the
+            // owner, 02.11). The deck's: the play key and the speed key sunk together, as the keys
+            // under the screen of Master Audio Switcher
             Rectangle {
                 objectName: "transportWell"
                 visible: Theme.wellStyle === "transport"
@@ -880,14 +881,6 @@ Window {
                 radius: Theme.keyRadius + 4
                 color: keys.wellColour
                 border.color: Theme.line
-            }
-            // solid, so that it hides the groove's edge; no hairline: round the key it read as an
-            // outline (the owner)
-            Rectangle {
-                visible: Theme.wellStyle === "transport"
-                x: leftKeys.x + playKey.x - 4; y: leftKeys.y + playKey.y - 4
-                width: playKey.width + 8; height: width; radius: width / 2
-                color: keys.wellColour
             }
             Rectangle {
                 visible: Theme.wellStyle === "deck"
