@@ -46,6 +46,9 @@ MinVersion=10.0.17763
 ShowLanguageDialog=auto
 Uninstallable=not IsPortable
 CreateUninstallRegKey=not IsPortable
+; the shell is told at the end, so files the player was offered for show the new exe's icon
+; at once and not the one Explorer cached from the old exe at the same path
+ChangesAssociations=yes
 
 [Languages]
 Name: "en"; MessagesFile: "compiler:Default.isl"

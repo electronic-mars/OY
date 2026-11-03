@@ -5,7 +5,17 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-03
+
+### Added
+- A screenshot can open to be drawn on (Settings › Screenshot › «Open to draw on»): a window with the frame alone, no timeline, where arrows, rectangles, circles, lines, text and pictures go on it; then Copy, Save or Close. Pressing the screenshot key again while drawings are on it brings the window forward and keeps them.
+- A saved screenshot shows its file name for three seconds with «Open the folder».
+- Drawings, in the editor and on a screenshot: a circle among the shapes and black among the inks. Text being typed counts as entered when another tool is chosen, or on Save and Copy.
+
 ### Changed
+- An inserted image is a picture, not a logo: its corners stretch and squeeze it freely, and it cannot be squeezed to nothing.
+- A screenshot is written aside and the video does not stop for it; a PNG is 8-bit, a fraction of the size and the time. It is saved in the format chosen in Settings.
+- The installer tells Windows when it is done, so files offered to the player show the new icon at once.
 - The play key is a knob: a graphite bezel with a lit ring in the accent, inside it the face of a volume knob, lighter up and to the left and darker to its edge, and a larger sign set by its weight; it is drawn a little larger, without the dark ring the panel's groove had round it. The colour dial in Settings shows the same key.
 - The player's icon is the new play key itself, round and edge to edge, its lit ring as the rim, with no square body round it: it fills its place in the tray and the taskbar. Each size is drawn on its own.
 - The panel: the dark well now runs under the settings and play keys too, and the right keys (scheduler, on top, the list) sit in a well of their own.
@@ -14,6 +24,9 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 - Menus show each item's key on a small sunk cap and frame the row under the pointer in the accent; the scheduler's choices sit in wells, its times on the LCD glass.
 - Skins: Default, Classic and Studio; Deck and Switcher are gone for now. The skin pictures in Settings show the current panel.
 - The editor's title bar shows only the EDITING label: the scheduler and on-top keys are the player's alone again, and the editor closes from a key at the right end of the edit strip (or Esc).
+
+### Fixed
+- A screenshot that cannot be saved (a folder without rights, a full disk) says so and leaves no empty file; the player waits for a screenshot being written before it quits.
 
 ## [0.13.0] - 2026-11-01
 
