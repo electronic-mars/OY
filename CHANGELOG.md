@@ -5,6 +5,11 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-11-03
+
+### Fixed
+- In full screen a thin lit line ran along the monitor's edges round the black, with a lit rounded corner: Windows' own window outline, left on under Direct3D. Full screen is now black to the very edge.
+
 ## [0.14.0] - 2026-11-03
 
 ### Added
