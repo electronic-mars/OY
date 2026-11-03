@@ -227,13 +227,17 @@ Window {
             it.push({ text: what.charAt(0).toUpperCase() + what.slice(1), checked: scheduler.action === a, keepOpen: true,
                       run: () => { scheduler.setAction(a); schedMenu.items = win.schedItems() } })
         }
+        // the times on the LCD's glass, as hours and minutes; after this file, what is left of it
+        var hm = (n) => Math.floor(n / 60) + ":" + String(n % 60).padStart(2, "0")
+        var left = Math.max(0, Math.round((player.duration - player.position) / 60))
         it.push({ separator: true }, { header: L.t.m_when },
-                { text: L.t.m_after_file, checked: scheduler.when === "file", run: () => scheduler.arm("file", 0) },
+                { text: L.t.m_after_file, checked: scheduler.when === "file", lcd: player.hasFile ? hm(left) : "",
+                  run: () => scheduler.arm("file", 0) },
                 { text: L.t.m_after_list, checked: scheduler.when === "list", run: () => scheduler.arm("list", 0) })
         var mins = [[15, L.t.m_in15], [30, L.t.m_in30], [60, L.t.m_in60], [90, L.t.m_in90], [120, L.t.m_in120]]
         for (var m = 0; m < mins.length; m++) {
             let n = mins[m][0]
-            it.push({ text: mins[m][1], run: () => scheduler.arm("timer", n) })
+            it.push({ text: mins[m][1], lcd: hm(n), run: () => scheduler.arm("timer", n) })
         }
         if (scheduler.when !== "")
             it.push({ separator: true }, { header: L.t.m_now }, { text: scheduler.summary, enabled: false },
@@ -869,15 +873,26 @@ Window {
             readonly property color wellColour: Qt.tint(Theme.deck, Theme.sunk)     // the sunk tone, opaque
 
             // the wells the keys sit in (Theme.wellStyle). The transport's (the default, Gemini's first
-            // concept): one sunk groove from the play key to the editor's, its round head hidden under
-            // the key (drawn past its place); no dark ring round the key, it read as an outline (the
-            // owner, 02.11). The deck's: the play key and the speed key sunk together, as the keys
-            // under the screen of Master Audio Switcher
+            // concept): one sunk groove under the left keys, from the first (settings, or the play key
+            // when a skin puts settings right) to past the editor's, the play key standing out of it;
+            // and the same under the right keys, from the settings or the scheduler to the list's
+            // (the owner, 03.11). No dark ring round the play key, it read as an outline (02.11). The
+            // deck's: the play key and the speed key sunk together, as the keys under the screen of
+            // Master Audio Switcher
             Rectangle {
                 objectName: "transportWell"
                 visible: Theme.wellStyle === "transport"
-                x: leftKeys.x + playKey.x + playKey.width / 2; y: (parent.height - height) / 2
-                width: editKey.x + editKey.width + 6 - playKey.x - playKey.width / 2; height: Theme.keyH + 10
+                x: leftKeys.x - 6; y: (parent.height - height) / 2
+                width: editKey.x + editKey.width + 12; height: Theme.keyH + 10
+                radius: Theme.keyRadius + 4
+                color: keys.wellColour
+                border.color: Theme.line
+            }
+            Rectangle {
+                objectName: "rightWell"
+                visible: Theme.wellStyle === "transport"
+                x: (rightSettings.visible ? rightSettings.x : rightKeys.x) - 6; y: (parent.height - height) / 2
+                width: rightKeys.x + rightKeys.width + 6 - x; height: Theme.keyH + 10
                 radius: Theme.keyRadius + 4
                 color: keys.wellColour
                 border.color: Theme.line
@@ -977,6 +992,7 @@ Window {
                 onClicked: actions.run("settings")
             }
             SettingsKey {
+                id: rightSettings
                 onRight: true
                 anchors { right: rightKeys.left; rightMargin: keys.step * 2; verticalCenter: parent.verticalCenter }
             }
@@ -991,7 +1007,7 @@ Window {
                          tip: scheduler.when !== "" ? scheduler.summary : L.t.t_scheduler
                          anchors.verticalCenter: parent.verticalCenter
                          onClicked: win.openSchedMenu()
-                         PanelMenu { id: schedMenu; objectName: "schedMenu"; y: -implicitHeight - 10; margins: 8 } }
+                         PanelMenu { id: schedMenu; objectName: "schedMenu"; wells: true; rowWidth: 236; y: -implicitHeight - 10; margins: 8 } }
                 KeyCap { objectName: "keyOnTop"; glyph: win.onTop ? Theme.icPinned : Theme.icPin; latched: win.onTop
                          tip: L.t.t_on_top
                          anchors.verticalCenter: parent.verticalCenter

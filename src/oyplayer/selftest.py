@@ -206,6 +206,14 @@ class SelfTest(QObject):
                 return hit
         return None
 
+    def find_items(self, name, item=None, out=None):
+        item, out = item or self.win.contentItem(), [] if out is None else out
+        if item.objectName() == name:
+            out.append(item)
+        for child in item.childItems():
+            self.find_items(name, child, out)
+        return out
+
     def near_accent(self, color):
         """A colour of the accent's family (its hue, within a few degrees): the accent itself or
         its lighter shade for signs and words."""
@@ -396,8 +404,8 @@ class SelfTest(QObject):
             (0, self.s_assoc_prep), (700, self.s_assoc_nav), (700, self.s_assoc_shot), (300, self.s_assoc_on),
             (700, self.s_assoc_registered), (500, self.s_assoc_removed),
             (0, lambda: self.settings_page(0, "setSeries")), (900, lambda: self.shot("m8_10_settings_playback")),
-            (0, lambda: self.settings_page(2, "setRadioDir")), (900, lambda: self.shot("m8_11_settings_radio")),
-            (0, lambda: self.settings_page(4, "setGlobalMedia")), (900, lambda: self.shot("m8_12_settings_keys")),
+            (0, lambda: self.settings_page(3, "setRadioDir")), (900, lambda: self.shot("m8_11_settings_radio")),
+            (0, lambda: self.settings_page(5, "setGlobalMedia")), (900, lambda: self.shot("m8_12_settings_keys")),
             (0, lambda: self.key("Esc")), (500, self.s_about), (600, self.s_about_shot),
         ]
         # A long file playing: what the editor, drawing and ideas blocks start from in a full
@@ -837,12 +845,12 @@ class SelfTest(QObject):
         self.shot("16_settings_playback")
         # Repeater delegates inside a popup are found by walking the visual item tree
         # (the overlay layer is under the window's content item), not the QObject tree.
-        nav = self.find_item("nav4")
+        nav = self.find_item("nav5")
         c = nav.mapToScene(QPointF(nav.width() / 2, nav.height() / 2))
         QTest.mouseClick(self.win, Qt.LeftButton, Qt.NoModifier, QPoint(int(c.x()), int(c.y())))
 
     def s_set_keys_shot(self):
-        self.check("section switch", self.win.findChild(QObject, "settingsPanel").property("section") == 4)
+        self.check("section switch", self.win.findChild(QObject, "settingsPanel").property("section") == 5)
         self.shot("17_settings_controls")
 
     def s_capture(self):
@@ -1138,7 +1146,7 @@ class SelfTest(QObject):
         self.a.run("settings")          # editing, the editor's row stands where the Settings key was
 
     def s_ed_settings_nav(self):
-        nav = self.find_item("nav5")
+        nav = self.find_item("nav6")
         self.click_item(nav)
 
     def s_ed_settings_shot(self):
@@ -1929,9 +1937,13 @@ class SelfTest(QObject):
             # every hint, whole inside the window
             (0, lambda: self.s_fb_tips("the panel and the title bar")),
             (0, lambda: self.s_fb_rclick("keySound")), (900, self.s_fb_tip_menu), (0, lambda: self.key("Esc")),
+            # the picture's menu: each key that does the same on its own small sunk cap
+            (400, lambda: QTest.mouseClick(self.win, Qt.RightButton, Qt.NoModifier,
+                                           QPoint(self.win.width() // 3, self.win.height() // 3))),
+            (700, self.s_fb_picture_menu), (0, lambda: self.key("Esc")),
             (400, lambda: QTest.mouseMove(self.win, QPoint(self.win.width() // 2, self.win.height() // 3))),
             # the one colour: the settings' dial, then the panel; the editor turns it yellow
-            (0, lambda: self.key("F10")), (700, lambda: self.click_item(self.find_item("nav1"))),
+            (0, lambda: self.key("F10")), (700, lambda: self.click_item(self.find_item("nav2"))),
             (300, lambda: self.scroll_to("setAccent")), (400, self.s_fb_tune), (600, self.s_fb_tuned),
             (0, lambda: self.key("Esc")), (600, self.s_fb_accent_panel),
             (0, lambda: self.key("E", Qt.ControlModifier)), (900, self.s_fb_edit_yellow),
@@ -2144,6 +2156,15 @@ class SelfTest(QObject):
                    menu is not None and menu.property("visible") is True and not tips,
                    f"menu open={menu.property('visible') if menu else None} hints shown={[t.property('text') for t in tips]}")
         self.shot("fb1_09_menu_no_hint")
+
+    def s_fb_picture_menu(self):
+        menu = self.win.findChild(QObject, "pictureMenu")
+        caps = self.find_items("menuKeys") if menu is not None and menu.property("visible") else []
+        inside = all(c.mapToItem(menu.property("contentItem"), QPointF(c.width(), 0)).x()
+                     <= menu.property("contentItem").width() + .5 for c in caps)
+        self.check("the picture's menu: the keys of its items each on a small cap inside the menu",
+                   len(caps) >= 6 and inside, f"caps={len(caps)} inside={inside}")
+        self.shot("fb1_10_picture_menu")
 
     def s_fb_tip(self, key):
         tips, want = self.visible_tips(), key.property("tip")
@@ -4199,8 +4220,10 @@ class SelfTest(QObject):
     # ---- the update (updater.py, update.py): a release page on 127.0.0.1 stands in for GitHub,
     # and a throwaway key for the release key
     def skins_steps(self):
-        ids = ["classic", "studio", "switcher", "deck"]
-        steps = [(0, lambda: self.pl.add([self.media], True)), (1500, self.s_sk_prep), (600, self.s_sk_default)]
+        ids = ["classic", "studio"]
+        # one file and the list closed: the pictures for the list show the panel as it first opens
+        steps = [(0, lambda: (self.pl.clear(), self.show_list(False))), (300, lambda: self.pl.add([self.media], True)),
+                 (1500, self.s_sk_prep), (600, self.s_sk_default)]
         for sid in ids:
             steps += [(0, lambda sid=sid: self.settings.set("skin", sid)), (700, lambda sid=sid: self.s_sk_drawn(sid))]
         return steps + [
@@ -4213,8 +4236,11 @@ class SelfTest(QObject):
             (0, lambda: QMetaObject.invokeMethod(self.win, "openSchedMenu")), (500, self.s_sk_edit_clock),
             (0, lambda: QMetaObject.invokeMethod(self.win.findChild(QObject, "schedMenu"), "close")),
             (0, lambda: self.ed.close()), (0, lambda: self.settings.set("skin", "default")), (700, self.s_sk_back),
-            (0, lambda: self.click("keySettings")), (600, lambda: self.settings_page(6, "skin_default")),
-            (900, self.s_sk_settings), (0, lambda: self.scroll_to("skin_studio")),
+            (0, lambda: self.click("keySettings")), (600, lambda: self.settings_page(2, "skin_default")),
+            (900, self.s_sk_settings),
+            # the settings held by their top strip and moved aside, to watch the panel
+            (0, self.s_sk_grab), (300, lambda: self.s_sk_drag(1)), (300, lambda: self.s_sk_drag(2)),
+            (300, self.s_sk_dropped), (0, lambda: self.scroll_to("skin_studio")),
             (400, lambda: self.click_item(self.find_item("skin_studio"))), (500, self.s_sk_picked),
             (0, lambda: self.settings.set("skin", "default")), (0, lambda: self.key("Esc")),
             (0, lambda: self.win.resize(self.sk_size)),
@@ -4240,9 +4266,9 @@ class SelfTest(QObject):
         self.p.mpv.pause = True
         ids = [i["id"] for i in sk.items]
         locked = [i["id"] for i in sk.items if i["locked"]]
-        self.check("the player finds its default and the four sealed skins it comes with, none locked, "
+        self.check("the player finds its default and the two sealed skins it comes with, none locked, "
                    "each with a picture of its panel",
-                   ids == ["default", "classic", "deck", "studio", "switcher"] and not locked
+                   ids == ["default", "classic", "studio"] and not locked
                    and all(i["preview"] for i in sk.items), f"ids={ids} locked={locked}")
         # the pictures for the list are shot at the narrowest window, where the keys read best
         self.sk_size = self.win.size()
@@ -4269,13 +4295,17 @@ class SelfTest(QObject):
     def s_sk_default(self):
         self.sk_default = self.sk_panel("default")
         self.sk_keys_right("the default skin")
-        well, play, edit = self.find_item("transportWell"), self.find_item("keyPlay"), self.find_item("keyEdit")
+        well, sets, edit = self.find_item("transportWell"), self.find_item("keySettings"), self.find_item("keyEdit")
+        right, clock = self.find_item("rightWell"), self.find_item("keyScheduler")
+        lst = self.find_item("keyNext") if self.find_item("keyNext").isVisible() else self.find_item("keyPlaylist")
         x = lambda it, dx=0: it.mapToScene(QPointF(dx, 0)).x()
-        self.check("the default skin: one well from the play key's middle to past the editor's key",
-                   well.isVisible() and abs(x(well) - x(play, play.width() / 2)) <= 1
-                   and 0 < x(well, well.width()) - x(edit, edit.width()) <= 10,
-                   f"well={x(well):.0f}..{x(well, well.width()):.0f} play mid={x(play, play.width() / 2):.0f} "
-                   f"edit end={x(edit, edit.width()):.0f}")
+        end = lambda it: x(it, it.width())
+        self.check("the default skin: one well from before the settings key to past the editor's, "
+                   "and one from before the scheduler to past the last key on the right",
+                   well.isVisible() and 0 < x(sets) - x(well) <= 8 and 0 < end(well) - end(edit) <= 8
+                   and right.isVisible() and 0 < x(clock) - x(right) <= 8 and 0 < end(right) - end(lst) <= 8,
+                   f"left={x(well):.0f}..{end(well):.0f} settings={x(sets):.0f} edit end={end(edit):.0f} "
+                   f"right={x(right):.0f}..{end(right):.0f} clock={x(clock):.0f} last end={end(lst):.0f}")
         self.shot("sk_default")
 
     def s_sk_drawn(self, sid):
@@ -4325,6 +4355,28 @@ class SelfTest(QObject):
                    and cards[0].property("chosen") is True and all(c.height() > 60 for c in cards),
                    f"cards={[c.height() if c else None for c in cards]}")
         self.shot("sk_settings")
+
+    def s_sk_grab(self):
+        panel, grip = self.win.findChild(QObject, "settingsPanel"), self.find_item("settingsGrip")
+        self.sk_at = (panel.property("x"), panel.property("y"))
+        c = grip.mapToScene(QPointF(grip.width() / 2, grip.height() / 2))
+        self.sk_grip = QPointF(c.x(), c.y())
+        self.mouse("press", self.sk_grip)
+
+    def s_sk_drag(self, step):
+        self.mouse("move", self.sk_grip + QPointF(-60 * step, 20 * step))
+
+    def s_sk_dropped(self):
+        self.mouse("release", self.sk_grip + QPointF(-120, 40))
+        panel = self.win.findChild(QObject, "settingsPanel")
+        moved = (panel.property("x") - self.sk_at[0], panel.property("y") - self.sk_at[1])
+        # as far as the pointer went, unless the window's edge comes first
+        room = lambda d: max(0.0, (self.win.contentItem().property(d) - panel.property(d)) / 2)
+        want = (-min(120, room("width")), min(40, room("height")))
+        self.check("the settings move by their top strip and stay inside the window",
+                   abs(moved[0] - want[0]) <= 2 and abs(moved[1] - want[1]) <= 2 and panel.property("x") >= 0,
+                   f"moved by {moved[0]:.0f}, {moved[1]:.0f}, want {want[0]:.0f}, {want[1]:.0f}")
+        self.shot("sk_settings_moved")
 
     def s_sk_picked(self):
         self.check("a click on a skin's card puts it on", self.settings["skin"] == "studio"

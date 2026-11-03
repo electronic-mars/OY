@@ -1,6 +1,7 @@
 """Draws OY Player's icon (src/oyplayer/oyplayer.ico): the panel's play key (the knob of variant E,
 03.11: a graphite bezel, a ring in the accent, the face of Master Audio Switcher's knob, the orange
-sign) on a graphite body. One drawing per size, so 16 px is drawn for 16 px, not scaled down.
+sign) without its bezel, round and as wide as the icon (the owner, 03.11: a square body round it took room in the
+tray and the taskbar). One drawing per size, so 16 px is drawn for 16 px, not scaled down.
 
     .venv\\Scripts\\python.exe tools\\make_icon.py
 
@@ -22,34 +23,24 @@ def draw(s):
     img.fill(Qt.transparent)
     p = QPainter(img)
     p.setRenderHint(QPainter.Antialiasing)
-    body = QRectF(s * .04, s * .04, s * .92, s * .92)
-    g = QLinearGradient(0, body.top(), 0, body.bottom())
-    g.setColorAt(0, QColor("#30353D"))
-    g.setColorAt(1, QColor("#1A1D22"))
     p.setPen(Qt.NoPen)
-    p.setBrush(g)
-    p.drawRoundedRect(body, s * .22, s * .22)
-    small = s <= 32                   # there the bezel is a blur: the ring sits at the knob's edge
-    k = s * .80                       # the knob, as PlayKey draws it at 46 px
+    small = s <= 32
+    k = s                             # the knob, as PlayKey draws it at 46 px, edge to edge
     c = s / 2
 
     def disc(d, brush):
         p.setBrush(brush)
         p.drawEllipse(QRectF(c - d / 2, c - d / 2, d, d))
 
-    if not small:
-        g = QLinearGradient(0, c - k / 2, 0, c + k / 2)
-        g.setColorAt(0, QColor("#3A3E45"))
-        g.setColorAt(1, QColor("#17191D"))
-        disc(k, g)
-    ring = k * (1 - 7 / 46) if not small else k
+    # no graphite bezel: on a dark taskbar it vanished and the ring read smaller; the ring is the edge
+    ring = k
     g = QLinearGradient(0, c - ring / 2, 0, c + ring / 2)
     g.setColorAt(0, QColor("#FF9A55"))
     g.setColorAt(1, QColor("#B8501A"))
     disc(ring, g)
     # the face: Master Audio Switcher's inner disc, lit up and to the left of its middle
     # the ring as thick as the key draws it only at 256: smaller, a pixel line would vanish
-    face = (k * (1 - 10 / 46) if s > 64 else
+    face = (k * (1 - 4 / 46) if s > 64 else
             ring - 2 * max(2.5, s * .06) if not small else ring - 2 * max(2, s * .1))
     x0 = c - face / 2
     g = QRadialGradient(QPointF(x0 + face * .36, x0 + face * .26), face * 1.2)

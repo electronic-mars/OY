@@ -7,7 +7,12 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 
 ### Changed
 - The play key is a knob: a graphite bezel with a lit ring in the accent, inside it the face of a volume knob, lighter up and to the left and darker to its edge, and a larger sign set by its weight; it is drawn a little larger, without the dark ring the panel's groove had round it. The colour dial in Settings shows the same key.
-- The player's icon is the new play key on its graphite body, drawn for each size.
+- The player's icon is the new play key itself, round and edge to edge, its lit ring as the rim, with no square body round it: it fills its place in the tray and the taskbar. Each size is drawn on its own.
+- The panel: the dark well now runs under the settings and play keys too, and the right keys (scheduler, on top, the list) sit in a well of their own.
+- Settings: Appearance (formerly Skins) is the third section and holds the theme and the main colour as well as the skins; Window is now General. The settings window can be moved by its top strip, to watch the panel while a skin or the colour changes.
+- About shows the play key as the program's mark in a card framed in the accent, and, each on a line of its own, the way to the project's site and to thanking its developer.
+- Menus show each item's key on a small sunk cap and frame the row under the pointer in the accent; the scheduler's choices sit in wells, its times on the LCD glass.
+- Skins: Default, Classic and Studio; Deck and Switcher are gone for now. The skin pictures in Settings show the current panel.
 - The editor's title bar shows only the EDITING label: the scheduler and on-top keys are the player's alone again, and the editor closes from a key at the right end of the edit strip (or Esc).
 
 ## [0.13.0] - 2026-11-01

@@ -2,13 +2,23 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
 
-// Settings: six sections instead of fifteen pages, and About. Each row is a name, one sentence
+// Settings: seven sections instead of fifteen pages, and About. Each row is a name, one sentence
 // and one control (MAS). Changes apply at once; there is no OK/Apply.
 Popup {
     id: sp
     property int section: 0
     readonly property var v: settings.values
-    anchors.centerIn: Overlay.overlay
+    // in the middle of the window, moved by its top strip (the owner, 03.11: to watch the panel
+    // while a skin or the colour changes); the shift stays for the session, inside the window
+    property real dx: 0
+    property real dy: 0
+    readonly property Item ov: Overlay.overlay
+    x: ov ? (ov.width - width) / 2 + dx : 0
+    y: ov ? (ov.height - height) / 2 + dy : 0
+    function moveTo(nx, ny) {
+        var mx = Math.max(0, (ov.width - width) / 2), my = Math.max(0, (ov.height - height) / 2)
+        dx = Math.max(-mx, Math.min(mx, nx)); dy = Math.max(-my, Math.min(my, ny))
+    }
     width: Math.min(780, (parent ? parent.width : 800) - 40)
     height: Math.min(600, (parent ? parent.height : 640) - 40)
     padding: 0
@@ -18,19 +28,20 @@ Popup {
 
     readonly property var sections: [
         { title: L.t.p_playback, icon: Theme.icPlay }, { title: L.t.p_window, icon: Theme.icWindow },
+        { title: L.t.p_skins, icon: Theme.icPalette },
         { title: L.t.p_sound, icon: Theme.icVolume }, { title: L.t.p_subs, icon: Theme.icCaptions },
         { title: L.t.p_controls, icon: Theme.icKeyboard }, { title: L.t.p_shots, icon: Theme.icCamera },
-        { title: L.t.p_skins, icon: Theme.icPalette }, { title: L.t.about, icon: Theme.icInfo }]
+        { title: L.t.about, icon: Theme.icInfo }]
     // what «Defaults» puts back in each section (the language, the key list and the file types
     // in Windows are left as they are: each has its own way back)
     readonly property var sectionKeys: [
         ["resume", "fileMemory", "openAdds", "series", "autoskip", "onListEnd", "history", "hwdec"],
-        ["theme", "accent", "onTop", "fitWindow", "singleInstance", "updateCheck", "tray"],
+        ["onTop", "fitWindow", "singleInstance", "updateCheck", "tray"],
+        ["theme", "accent", "skin"],
         ["audioDevice", "channels", "passthrough", "audioMode", "maxVolume", "audioLang", "radioDir", "radioRecDir"],
         ["subsOn", "subScale", "subLang", "subFolders"],
         ["wheel", "leftClick", "middleClick", "doubleClick", "sideButtons", "preview", "globalMedia", "seekStep", "jumpStep"],
         ["shotFormat", "shotQuality", "shotDir", "exportCodec", "mpvOptions"],
-        ["skin"],
         []]
 
     component Card: Rectangle {
@@ -46,6 +57,22 @@ Popup {
     }
 
     contentItem: Item {
+        // ---- the strip it is held by: the title row, over the whole width (the close key above it)
+        Item {
+            objectName: "settingsGrip"
+            anchors { left: parent.left; right: parent.right; top: parent.top }
+            height: 44
+            HoverHandler { cursorShape: grip.active ? Qt.ClosedHandCursor : Qt.OpenHandCursor }
+            DragHandler {
+                id: grip
+                target: null
+                property real sx
+                property real sy
+                onActiveChanged: if (active) { sx = sp.dx; sy = sp.dy }
+                onCentroidChanged: if (active) sp.moveTo(sx + centroid.scenePosition.x - centroid.scenePressPosition.x,
+                                                         sy + centroid.scenePosition.y - centroid.scenePressPosition.y)
+            }
+        }
         // ---- navigation (MAS tabs, vertical)
         Rectangle {
             id: nav
@@ -141,7 +168,7 @@ Popup {
             Item {
                 id: pages
                 width: flick.width - 10
-                height: [p0, p1, p2, p3, p4, p5, p6, p7][sp.section].height
+                height: [p0, p1, p6, p2, p3, p4, p5, p7][sp.section].height
 
                 // 1. Playback
                 Column {
@@ -192,7 +219,7 @@ Popup {
                     }
                 }
 
-                // 2. Window
+                // 2. General: the language, the window, the system
                 Column {
                     id: p1; visible: sp.section === 1; width: parent.width; spacing: 10
                     Caption { text: L.t.c_view }
@@ -202,13 +229,9 @@ Popup {
                                               options: [{ value: "", text: L.t.as_windows }].concat(
                                                            i18n.languages.map(l => ({ value: l.code, text: l.name })))
                                               onPicked: (x) => settings.set("lang", x) } }
-                        SettingRow { title: L.t.s_theme; below: true; hint: ""
-                                     Segmented { objectName: "setTheme"; width: 360; value: sp.v.theme
-                                                 options: [{ value: "system", text: L.t.as_windows }, { value: "dark", text: L.t.o_dark }, { value: "light", text: L.t.o_light }]
-                                                 onPicked: (x) => settings.set("theme", x) } }
-                        SettingRow { title: L.t.s_accent; below: true
-                                     hint: L.t.s_accent_h
-                                     AccentDial { objectName: "setAccent"; width: parent.width } }
+                    }
+                    Caption { text: L.t.c_window }
+                    Card {
                         SettingRow { title: L.t.act_on_top; below: true
                                      hint: L.t.s_on_top_h
                                      Segmented { width: 400; value: sp.v.onTop
@@ -251,9 +274,9 @@ Popup {
                     }
                 }
 
-                // 3. Sound
+                // 4. Sound
                 Column {
-                    id: p2; visible: sp.section === 2; width: parent.width; spacing: 10
+                    id: p2; visible: sp.section === 3; width: parent.width; spacing: 10
                     Caption { text: L.t.c_output }
                     Card {
                         SettingRow { title: L.t.s_device; below: true; hint: L.t.s_device_h
@@ -314,9 +337,9 @@ Popup {
                     }
                 }
 
-                // 4. Subtitles
+                // 5. Subtitles
                 Column {
-                    id: p3; visible: sp.section === 3; width: parent.width; spacing: 10
+                    id: p3; visible: sp.section === 4; width: parent.width; spacing: 10
                     Caption { text: L.t.c_display }
                     Card {
                         SettingRow { title: L.t.s_subs_on; hint: L.t.s_subs_on_h
@@ -335,9 +358,9 @@ Popup {
                     }
                 }
 
-                // 5. Controls
+                // 6. Controls
                 Column {
-                    id: p4; visible: sp.section === 4; width: parent.width; spacing: 10
+                    id: p4; visible: sp.section === 5; width: parent.width; spacing: 10
                     Caption { text: L.t.c_mouse }
                     Card {
                         SettingRow { title: L.t.s_left; below: true; hint: L.t.s_left_h
@@ -447,9 +470,9 @@ Popup {
                     }
                 }
 
-                // 6. Screenshots (and advanced)
+                // 7. Screenshots (and advanced)
                 Column {
-                    id: p5; visible: sp.section === 5; width: parent.width; spacing: 10
+                    id: p5; visible: sp.section === 6; width: parent.width; spacing: 10
                     Caption { text: L.t.c_shots }
                     Card {
                         SettingRow { title: L.t.s_folder; below: true; hint: app.screenshotDir
@@ -483,10 +506,22 @@ Popup {
                     }
                 }
 
-                // 7. Skins: each one as its panel looks, a click puts it on; a locked one (paid, no
+                // 3. Appearance (third, the owner's order of 03.11): the theme and the one colour, then
+                // the skins, each one as its panel looks, a click puts it on; a locked one (paid, no
                 // licence here) shows itself but cannot be chosen
                 Column {
-                    id: p6; objectName: "skinsPage"; visible: sp.section === 6; width: parent.width; spacing: 10
+                    id: p6; objectName: "skinsPage"; visible: sp.section === 2; width: parent.width; spacing: 10
+                    Caption { text: L.t.c_look }
+                    Card {
+                        SettingRow { title: L.t.s_theme; below: true; hint: ""
+                                     Segmented { objectName: "setTheme"; width: 360; value: sp.v.theme
+                                                 options: [{ value: "system", text: L.t.as_windows }, { value: "dark", text: L.t.o_dark }, { value: "light", text: L.t.o_light }]
+                                                 onPicked: (x) => settings.set("theme", x) } }
+                        SettingRow { title: L.t.s_accent; below: true
+                                     hint: L.t.s_accent_h
+                                     AccentDial { objectName: "setAccent"; width: parent.width } }
+                    }
+                    Caption { text: L.t.c_skins }
                     Text { width: parent.width; wrapMode: Text.WordWrap; leftPadding: 4; rightPadding: 4
                            text: L.t.s_skin_h; color: Theme.tx2; font.family: Theme.uiFont; font.pixelSize: 12 }
                     Repeater {
@@ -530,7 +565,12 @@ Popup {
                 // 8. About
                 Column {
                     id: p7; visible: sp.section === 7; width: parent.width; spacing: 10
-                    Card { AboutPage { objectName: "aboutPage"; width: parent.width } }
+                    // its own card, framed in the accent
+                    Rectangle {
+                        width: parent.width; height: aboutPage.height
+                        radius: 12; color: Theme.card; border.color: Theme.accA(.55)
+                        AboutPage { id: aboutPage; objectName: "aboutPage"; width: parent.width }
+                    }
                 }
             }
         }

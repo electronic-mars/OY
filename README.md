@@ -31,6 +31,10 @@ tools\build.cmd
 
 `OYPlayer.cmd` runs the player from source; `tools\build.cmd` builds `dist\OYPlayer\` and the installer.
 
+## Support
+
+OY Player is made by one developer in their spare time. Donations are not set up yet; until then, a star on GitHub, a bug report or an idea in the [issues](https://github.com/electronic-mars/OY/issues) is the best thanks.
+
 ## Third-party components
 
 FFmpeg, libmpv, Qt and others are listed with their licences and sources in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
