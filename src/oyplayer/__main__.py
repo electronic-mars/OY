@@ -197,6 +197,9 @@ def main(argv):
                    osc="no", input_default_bindings="no", input_vo_keyboard="no",
                    sub_use_margins="no", volume_max=200,
                    screenshot_tag_colorspace="no", sws_allow_zimg="no",
+                   # 10-bit video made 16-bit PNGs: 24 MB and 1.5-3 s a 4K frame; 8-bit at
+                   # compression 4 is 4 MB in 0.5 s and looks the same (measured, 4K HEVC)
+                   screenshot_high_bit_depth="no", screenshot_png_compression=4,
                    log_handler=mpv_log, loglevel="warn")
     if selftest:
         core["ao"] = "null"   # test clips carry a test tone; a self-test must stay silent
@@ -269,6 +272,7 @@ def main(argv):
     ctx.setContextProperty("updater", updater)
     ctx.setContextProperty("skins", skins)
     engine.addImageProvider("preview", preview.provider)
+    engine.addImageProvider("shot", shot.provider)
     from PySide6.QtGui import QFontDatabase
     for font in (PKG / "fonts").glob("*.ttf"):      # IBM Plex Mono: the scale, numbers and lengths
         QFontDatabase.addApplicationFont(str(font))

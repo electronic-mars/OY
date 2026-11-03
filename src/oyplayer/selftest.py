@@ -4485,8 +4485,7 @@ class SelfTest(QObject):
 
     def s_she_open(self):
         sw, shot, pic = self.shot_window(), self.m8["shot"], self.find_sw("shotPicture")
-        self.she_file = shot._src
-        self.she_src = QImage(self.she_file)
+        self.she_src = QImage(shot._img)
         self.check("«open the editor»: the screenshot key opens the frame in its own window, nothing saved yet",
                    shot.active and sw.isVisible() and pic.property("paintedWidth") > 0 and not self.she_src.isNull()
                    and self.shots_now() == self.shots_before and shot.name.startswith(Path(self.media).stem),
@@ -4526,8 +4525,8 @@ class SelfTest(QObject):
 
     def s_she_closed(self):
         shot = self.m8["shot"]
-        self.check("Close: the editor's window goes and its picture file is removed",
-                   not shot.active and not self.shot_window().isVisible() and not Path(self.she_file).exists())
+        self.check("Close: the editor's window goes and its picture is dropped",
+                   not shot.active and not self.shot_window().isVisible() and shot._img.isNull())
 
     def s_she_dropped(self):
         shot = self.m8["shot"]

@@ -532,20 +532,19 @@ class Player(QObject):
                 self.shotSaved.emit(str(target))
         self.mpv.command_async("screenshot-to-file", str(target), "video", callback=done)
 
-    def grab_frame(self, target):
-        """The frame shown, without the OSD, into a PNG file (the screenshot editor's picture)."""
-        self.mpv.command("screenshot-to-file", str(target), "video")
+    def grab_frame(self):
+        """The frame shown, without the OSD, straight from mpv's memory: 0.1 s for 4K, where
+        a PNG written and read back took 2-4 s."""
+        from PySide6.QtGui import QImage
+        r = self.mpv.command("screenshot-raw", "video")
+        return QImage(r["data"], r["w"], r["h"], r["stride"], QImage.Format_RGB32).copy()
 
     @Slot()
     def screenshotToClipboard(self):
         if not self._state["path"]:
             return
-        from tempfile import gettempdir
-        from PySide6.QtGui import QGuiApplication, QImage
-        tmp = Path(gettempdir()) / "oyplayer_clip.png"
-        self.mpv.command("screenshot-to-file", str(tmp), "video")
-        QGuiApplication.clipboard().setImage(QImage(str(tmp)))
-        tmp.unlink(missing_ok=True)
+        from PySide6.QtGui import QGuiApplication
+        QGuiApplication.clipboard().setImage(self.grab_frame())
         self.osdMessage.emit(tr("osd_shot_clipboard"))
 
     @Slot(float)

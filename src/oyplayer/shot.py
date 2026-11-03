@@ -8,12 +8,13 @@ picture by editor.paint_note(), so what is saved is what was seen.
 """
 import copy
 import itertools
-import tempfile
+import threading
 import time
 from pathlib import Path
 
 from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
 from PySide6.QtGui import QGuiApplication, QImage, QPainter
+from PySide6.QtQuick import QQuickImageProvider
 
 from .editor import LOGO_H, UNDO_MERGE, UNDO_STEPS, paint_note
 from .i18n import tr
@@ -22,16 +23,27 @@ from .log import log
 _grabs = itertools.count()
 
 
+class _Provider(QQuickImageProvider):
+    """The frame for the window's Image: from memory, no file written or read."""
+    def __init__(self):
+        super().__init__(QQuickImageProvider.ImageType.Image)
+        self.image = QImage()
+
+    def requestImage(self, _id, _size, _requested):
+        return self.image
+
+
 class ShotEditor(QObject):
     changed = Signal()
     opened = Signal()           # a new frame in the editor: its window comes up
     message = Signal(str)       # undo, copy, a picture that cannot be read: said in the window
-    saved = Signal(str)         # the saved file: its name and «Open the folder» for 3 s
+    saved = Signal(str)         # the saved file: its name and «Open the folder» for 3 s (from the writer's thread)
 
     def __init__(self, player, settings, folder):
         super().__init__()
         self.p, self.settings, self.folder = player, settings, folder
-        self._active, self._src, self._name = False, "", ""
+        self._active, self._img, self._src, self._name = False, QImage(), "", ""
+        self.provider = _Provider()
         self._notes, self._sel, self._undo, self._redo, self._merge = [], -1, [], [], None
 
     @Slot()
@@ -39,14 +51,16 @@ class ShotEditor(QObject):
         """The frame shown now becomes the picture; the drawings of the last one are gone."""
         if not self.p.hasFile:
             return
-        src = Path(tempfile.gettempdir()) / f"oyplayer_shot_{next(_grabs)}.png"
-        self.p.grab_frame(src)
-        if QImage(str(src)).isNull():
-            log.warning("shot: no frame in %s", src)
+        try:
+            img = self.p.grab_frame()
+        except Exception as e:      # mpv has no frame to give (audio only, still loading)
+            log.warning("shot: no frame: %s", e)
+            img = QImage()
+        if img.isNull():
             self.p.osdMessage.emit(tr("osd_shot_none"))
             return
-        self._drop_file()
-        self._src, self._name = str(src), self.p.shot_name()
+        self._img = self.provider.image = img
+        self._src, self._name = f"image://shot/{next(_grabs)}", self.p.shot_name()
         self._notes, self._sel, self._undo, self._redo, self._merge = [], -1, [], [], None
         self._active = True
         log.info("shot editor: %s", self._name)
@@ -59,13 +73,9 @@ class ShotEditor(QObject):
         if not self._active:
             return
         self._active = False
-        self._drop_file()
+        self._img = self.provider.image = QImage()
         self._src, self._notes, self._sel = "", [], -1
         self.changed.emit()
-
-    def _drop_file(self):
-        if self._src:
-            Path(self._src).unlink(missing_ok=True)
 
     @Property(bool, notify=changed)
     def active(self):
@@ -73,7 +83,7 @@ class ShotEditor(QObject):
 
     @Property(str, notify=changed)
     def source(self):
-        return QUrl.fromLocalFile(self._src).toString() if self._src else ""
+        return self._src
 
     @Property(str, notify=changed)
     def name(self):
@@ -89,7 +99,7 @@ class ShotEditor(QObject):
 
     # ---- the picture with its drawings
     def picture(self):
-        img = QImage(self._src).convertToFormat(QImage.Format_ARGB32_Premultiplied)
+        img = self._img.convertToFormat(QImage.Format_ARGB32_Premultiplied)
         p = QPainter(img)
         for n in self._notes:
             paint_note(p, n, (0, 0, img.width(), img.height()))
@@ -99,7 +109,8 @@ class ShotEditor(QObject):
     @Slot(result=str)
     def save(self):
         """Into the screenshots folder, in the settings' format; a second save of the same
-        picture gets a number instead of writing over the first."""
+        picture gets a number instead of writing over the first. Written in a thread: a 4K PNG
+        takes 0.6 s even at this compression (1.9 s at Qt's default), the window goes on."""
         if not self._active:
             return ""
         ext = "jpg" if self.settings["shotFormat"] == "jpg" else "png"
@@ -109,9 +120,14 @@ class ShotEditor(QObject):
         k = 2
         while target.exists():
             target, k = folder / f"{self._name} ({k}).{ext}", k + 1
-        self.picture().save(str(target), ext.upper(), self.settings["shotQuality"] if ext == "jpg" else -1)
-        log.info("shot editor saved %s", target)
-        self.saved.emit(str(target))
+        target.touch()      # the name is taken now, before the thread writes it
+        img, quality = self.picture(), self.settings["shotQuality"] if ext == "jpg" else 50
+
+        def write():
+            img.save(str(target), ext.upper(), quality)
+            log.info("shot editor saved %s", target)
+            self.saved.emit(str(target))
+        threading.Thread(target=write, daemon=True).start()
         return str(target)
 
     @Slot()
@@ -164,7 +180,7 @@ class ShotEditor(QObject):
     def addImage(self, url):
         """A picture over the shot: upper right, LOGO_H of its height, proportions kept."""
         src = QUrl(url).toLocalFile() if "://" in url else url
-        img, shot = QImage(src), QImage(self._src)
+        img, shot = QImage(src), self._img
         if img.isNull():
             self.message.emit(tr("osd_no_image"))
             return -1
