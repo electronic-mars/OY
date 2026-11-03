@@ -59,8 +59,9 @@ def no_transitions(hwnd):
 def round_corners(hwnd, on=True):
     """Windows 11 rounds the frameless window's corners as its own (not when maximized or
     fullscreen), the way the panel's keys and cards are rounded, and draws its thin outline.
-    Both off for a window past its monitor (past_monitor): Windows leaves them off only for an
-    exact cover, and the outline showed round the black of full screen. Older Windows ignores it."""
+    Both off for a window that covers its monitor (past_monitor): the outline showed round the
+    black of full screen, a lit line 1 px wide at the monitor's edges, under OpenGL and Direct3D
+    alike. Older Windows ignores it."""
     pref = ctypes.c_int(DWMWCP_ROUND if on else DWMWCP_DONOTROUND)
     color = wintypes.DWORD(DWMWA_COLOR_DEFAULT if on else DWMWA_COLOR_NONE)
     outline = dwmapi.DwmSetWindowAttribute(wintypes.HWND(hwnd), DWMWA_BORDER_COLOR, ctypes.byref(color),
@@ -69,13 +70,13 @@ def round_corners(hwnd, on=True):
                                         ctypes.byref(pref), ctypes.sizeof(pref)) == 0 and outline == 0
 
 
-def past_monitor(wp):
-    """A window about to cover its monitor exactly (full screen) is made 1 px taller, its last row
-    past the bottom edge. NVIDIA's OpenGL driver shows such an exact window past the desktop
-    compositor: each switch blacked the screen out for a moment, and screen recorders saw only
-    black for as long as it lasted (the owner's OBS recording beside another player). A border
-    did not help: Qt 6 puts it outside the screen and the picture still covers it exactly.
-    Only for the OpenGL window (video.py): a Direct3D window covers its monitor exactly."""
+def past_monitor(wp, grow):
+    """Whether a window is about to cover its monitor (full screen). With `grow` (the OpenGL window,
+    video.py) it is made 1 px taller, its last row past the bottom edge. NVIDIA's OpenGL driver
+    shows such an exact window past the desktop compositor: each switch blacked the screen out for
+    a moment, and screen recorders saw only black for as long as it lasted (the owner's OBS
+    recording beside another player). A border did not help: Qt 6 puts it outside the screen and
+    the picture still covers it exactly. A Direct3D window covers its monitor exactly."""
     if wp.flags & SWP_NOSIZE:
         return None
     r = wintypes.RECT(wp.x, wp.y, wp.x + wp.cx, wp.y + wp.cy)
@@ -83,7 +84,8 @@ def past_monitor(wp):
     user32.GetMonitorInfoW(user32.MonitorFromRect(ctypes.byref(r), MONITOR_DEFAULTTONEAREST), ctypes.byref(mi))
     m = mi.rcMonitor
     if (wp.x, wp.y, wp.x + wp.cx, wp.y + wp.cy) == (m.left, m.top, m.right, m.bottom):
-        wp.cy += 1
+        if grow:
+            wp.cy += 1
         return True
     return False
 
@@ -92,7 +94,7 @@ class SnapKey(QAbstractNativeEventFilter):
     def __init__(self, win, cover_fix):
         super().__init__()
         self.win = win
-        self.cover_fix = cover_fix  # past_monitor for the OpenGL window
+        self.cover_fix = cover_fix  # the OpenGL window: 1 px past its monitor
         self.hwnd = int(win.winId())
         self.key = win.findChild(QObject, "keyMax")
         self.past = False           # the window is past its monitor (full screen): no outline, no corners
@@ -126,8 +128,8 @@ class SnapKey(QAbstractNativeEventFilter):
         if msg.hWnd != self.hwnd:
             return False, 0
         m, on_key = msg.message, msg.wParam == HTMAXBUTTON
-        if m == WM_WINDOWPOSCHANGING and self.cover_fix:
-            past = past_monitor(WINDOWPOS.from_address(msg.lParam))
+        if m == WM_WINDOWPOSCHANGING:
+            past = past_monitor(WINDOWPOS.from_address(msg.lParam), self.cover_fix)
             if past is not None and past != self.past:
                 self.past = past
                 # Windows answers no read of the outline: what was set is kept on the window (selftest)

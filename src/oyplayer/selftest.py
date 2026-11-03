@@ -3829,7 +3829,7 @@ class SelfTest(QObject):
         g, dpr = self.win.screen().geometry(), self.win.screen().devicePixelRatio()
         mon = (round(g.width() * dpr), round(g.height() * dpr))
         if self.win.property("videoD3D"):
-            self.check("full screen through Direct3D covers the monitor exactly (Windows draws no outline then)",
+            self.check("full screen through Direct3D covers the monitor exactly",
                        (r.right - r.left, r.bottom - r.top) == mon,
                        f"window={r.right - r.left}x{r.bottom - r.top} monitor={mon[0]}x{mon[1]}")
         else:
@@ -3837,8 +3837,9 @@ class SelfTest(QObject):
                        "NVIDIA's OpenGL takes past the desktop (a blackout, black in screen capture)",
                        (r.right - r.left, r.bottom - r.top) == (mon[0], mon[1] + 1),
                        f"window={r.right - r.left}x{r.bottom - r.top} monitor={mon[0]}x{mon[1]}")
-            self.check("full screen has no Windows outline round the black, nor rounded corners (switched off, accepted)",
-                       self.win.property("outlineOff") is True, f"outlineOff={self.win.property('outlineOff')}")
+        # Windows drew its outline round an exact cover too: a lit line 1 px wide at the monitor's edges
+        self.check("full screen has no Windows outline round the black, nor rounded corners (switched off, accepted)",
+                   self.win.property("outlineOff") is True, f"outlineOff={self.win.property('outlineOff')}")
         # paused, one frame is drawn after the window grows: it must be drawn at the new size
         osd, dpr = self.st("osd") or {}, self.win.effectiveDevicePixelRatio()
         want = (round(self.win.width() * dpr), round(self.win.height() * dpr))
@@ -3882,8 +3883,7 @@ class SelfTest(QObject):
 
     def s_fb4_windowed(self):
         self.check("and back to the window, with its outline and round corners again",
-                   self.win.property("fs") is False
-                   and (self.win.property("videoD3D") or self.win.property("outlineOff") is False),
+                   self.win.property("fs") is False and self.win.property("outlineOff") is False,
                    f"outlineOff={self.win.property('outlineOff')}")
 
     def s_fb4_cap_start(self):
