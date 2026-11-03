@@ -225,7 +225,77 @@ def encoder_args(codec):
     return ["-c:v", "libx265", "-preset", "fast", "-crf", "24"] + tag
 
 
-class Editor(QObject):
+class NoteEdits(QObject):
+    """What the video editor and the screenshot editor do alike to their drawings (_notes,
+    the chosen one _noteSel) and how a change goes on the undo list; each keeps its own
+    _snap (what one undo step holds) and _swap (how a step is put back)."""
+
+    def _push(self, what, state, merge=None):
+        """merge: a key; calls with the same key in quick succession (a drag) are one step."""
+        now = time.monotonic()
+        if merge is not None and self._merge and self._merge[0] == merge and now - self._merge[1] < UNDO_MERGE:
+            self._merge = (merge, now)
+            return
+        self._merge = (merge, now) if merge is not None else None
+        self._undo.append((what, state))
+        del self._undo[:-UNDO_STEPS]
+        self._redo.clear()
+
+    def _mark(self, what, merge=None):
+        self._push(what, self._snap(), merge)
+
+    @Slot(int, float)
+    def setNoteOpacity(self, i, v):
+        if self._notes[i].get("opacity", 1.0) != v:
+            self._mark(tr("undo_opacity"))
+            self._notes[i]["opacity"] = v
+            self.changed.emit()
+
+    @Slot(int, "QVariantList")
+    def setNotePoints(self, i, pts):
+        self._mark(tr("undo_move", tr("note_" + self._notes[i]["kind"])), merge=("pts", i))
+        self._notes[i]["pts"] = [[float(x), float(y)] for x, y in pts]
+        self.changed.emit()
+
+    @Slot(int, str)
+    def setNoteText(self, i, text):
+        """An empty text takes the text drawing away. The first text is part of making the
+        drawing: one undo takes the new text drawing away whole."""
+        old = self._notes[i]["text"]
+        if text.strip():
+            if text == old:
+                return
+            if old:
+                self._mark(tr("undo_text"))
+            self._notes[i]["text"] = text
+        else:
+            if old:
+                self._mark(tr("undo_delete", tr("note_text")))
+            elif self._undo and self._undo[-1][0] == tr("undo_add", tr("note_text")):
+                self._undo.pop()     # a text drawing left empty was never made
+            del self._notes[i]
+            self._noteSel = -1
+        self.changed.emit()
+
+    @Slot(int, str)
+    def setNoteColor(self, i, color):
+        if color == self._notes[i]["color"]:
+            return
+        self._mark(tr("undo_color", tr("note_" + self._notes[i]["kind"])))
+        self._notes[i]["color"] = color
+        self.changed.emit()
+
+    @Slot(int, float)
+    def setNoteSize(self, i, size):
+        """The line's thickness: a multiple of STROKE (the draw bar's thin, medium, thick)."""
+        if size == self._notes[i].get("size", 1.0):
+            return
+        self._mark(tr("undo_size", tr("note_" + self._notes[i]["kind"])))
+        self._notes[i]["size"] = size
+        self.changed.emit()
+
+
+class Editor(NoteEdits):
     changed = Signal()
     saveRequested = Signal()          # QML asks where to save
     _progressed = Signal(float)
@@ -466,20 +536,6 @@ class Editor(QObject):
     # ---- undo: every change keeps the state it replaced, under a name for the OSD
     def _snap(self):
         return copy.deepcopy((self.frags, self._notes, self._selected, self._noteSel, self._rotate, self._frame))
-
-    def _push(self, what, state, merge=None):
-        """merge: a key; calls with the same key in quick succession (a drag) are one step."""
-        now = time.monotonic()
-        if merge is not None and self._merge and self._merge[0] == merge and now - self._merge[1] < UNDO_MERGE:
-            self._merge = (merge, now)
-            return
-        self._merge = (merge, now) if merge is not None else None
-        self._undo.append((what, state))
-        del self._undo[:-UNDO_STEPS]
-        self._redo.clear()
-
-    def _mark(self, what, merge=None):
-        self._push(what, self._snap(), merge)
 
     def _swap(self, src, dst, done, nothing):
         if not src:
@@ -741,39 +797,6 @@ class Editor(QObject):
         self.changed.emit()
         return self._noteSel
 
-    @Slot(int, float)
-    def setNoteOpacity(self, i, v):
-        if self._notes[i].get("opacity", 1.0) != v:
-            self._mark(tr("undo_opacity"))
-            self._notes[i]["opacity"] = v
-            self.changed.emit()
-
-    @Slot(int, "QVariantList")
-    def setNotePoints(self, i, pts):
-        self._mark(tr("undo_move", tr("note_" + self._notes[i]["kind"])), merge=("pts", i))
-        self._notes[i]["pts"] = [[float(x), float(y)] for x, y in pts]
-        self.changed.emit()
-
-    @Slot(int, str)
-    def setNoteText(self, i, text):
-        """An empty text takes the text drawing away. The first text is part of making the
-        drawing: one undo takes the new text drawing away whole."""
-        old = self._notes[i]["text"]
-        if text.strip():
-            if text == old:
-                return
-            if old:
-                self._mark(tr("undo_text"))
-            self._notes[i]["text"] = text
-        else:
-            if old:
-                self._mark(tr("undo_delete", tr("note_text")))
-            elif self._undo and self._undo[-1][0] == tr("undo_add", tr("note_text")):
-                self._undo.pop()     # a text drawing left empty was never made
-            del self._notes[i]
-            self._noteSel = -1
-        self.changed.emit()
-
     @Slot(int, float, float)
     def setNoteRange(self, i, a, b):
         self.setNoteRanges([[i, a, b]])
@@ -788,23 +811,6 @@ class Editor(QObject):
         for i, a, b in ranges:
             self._notes[int(i)].update(a=float(a), b=float(b))
         self._choose(note=ids[0])
-        self.changed.emit()
-
-    @Slot(int, str)
-    def setNoteColor(self, i, color):
-        if color == self._notes[i]["color"]:
-            return
-        self._mark(tr("undo_color", tr("note_" + self._notes[i]["kind"])))
-        self._notes[i]["color"] = color
-        self.changed.emit()
-
-    @Slot(int, float)
-    def setNoteSize(self, i, size):
-        """The line's thickness: a multiple of STROKE (the draw bar's thin, medium, thick)."""
-        if size == self._notes[i].get("size", 1.0):
-            return
-        self._mark(tr("undo_size", tr("note_" + self._notes[i]["kind"])))
-        self._notes[i]["size"] = size
         self.changed.emit()
 
     @Slot(int)

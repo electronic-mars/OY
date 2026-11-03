@@ -4408,6 +4408,8 @@ class SelfTest(QObject):
             (0, lambda: (self.pl.clear(), self.pl.add([self.media], True))), (1500, lambda: self.p.seek(3.0)),
             (700, lambda: self.settings.set("shotMode", "file")), (0, self.s_shf_prep),
             (0, lambda: self.a.run("screenshot")), (500, self.s_shf_toast), (3300, self.s_shf_gone),
+            (0, lambda: self.settings.set("shotFormat", "jpg")), (200, self.s_shf_prep),
+            (0, lambda: self.a.run("screenshot")), (700, self.s_shf_jpg), (0, lambda: self.settings.set("shotFormat", "png")),
             (0, lambda: self.click("keySettings")), (600, lambda: self.settings_page(6, "setShotMode")),
             (900, self.s_shm_setting), (0, lambda: self.key("Esc")),
             (300, lambda: self.settings.set("shotMode", "edit")), (0, self.s_shf_prep),
@@ -4425,6 +4427,12 @@ class SelfTest(QObject):
             (200, lambda: self.drag_sw([(0.6, 0.2)])), (300, lambda: self.type_sw("Hi")),
             (200, lambda: self.click_sw("drawArrow")), (300, self.s_she_text_kept),
             (0, self.s_she_picture), (500, self.s_she_stretch), (400, self.s_she_stretched),
+            (0, lambda: self.s_she_stretch(-600)), (400, self.s_she_not_squeezed),
+            # the key again with drawings on: they stay; a caption typed and saved without Enter is in the file
+            (0, self.s_she_count), (0, lambda: self.a.run("screenshot")), (600, self.s_she_kept),
+            (0, lambda: self.click_sw("drawText")), (200, lambda: self.drag_sw([(0.45, 0.75)])),
+            (300, lambda: self.type_sw("Yo")), (0, self.s_shf_prep), (0, lambda: self.click_sw("shotSave")),
+            (700, self.s_she_typed_saved),
             (0, lambda: self.click_sw("shotClose")),
             # drawn on again and closed: nothing is saved
             (0, self.s_shf_prep), (0, lambda: self.a.run("screenshot")), (900, lambda: self.click_sw("drawPen")),
@@ -4565,15 +4573,15 @@ class SelfTest(QObject):
         self.she_pic_i = shot.addImage(str(self.she_pic))
         self.she_pic_pts = [list(q) for q in shot.notes[self.she_pic_i]["pts"]]
 
-    def s_she_stretch(self):
-        """The chosen picture's lower right corner pulled 120 px to the left, not up or down."""
+    def s_she_stretch(self, dx=-120):
+        """The chosen picture's lower right corner pulled dx px sideways, not up or down."""
         sw, h = self.shot_window(), self.find_sw("noteHandle3")
         c = h.mapToScene(QPointF(h.width() / 2, h.height() / 2))
         a = QPoint(round(c.x()), round(c.y()))
         QTest.mousePress(sw, Qt.LeftButton, Qt.NoModifier, a)
         for k in range(1, 7):
-            QTest.mouseMove(sw, a - QPoint(20 * k, 0))
-        QTest.mouseRelease(sw, Qt.LeftButton, Qt.NoModifier, a - QPoint(120, 0))
+            QTest.mouseMove(sw, a + QPoint(round(dx * k / 6), 0))
+        QTest.mouseRelease(sw, Qt.LeftButton, Qt.NoModifier, a + QPoint(dx, 0))
 
     def s_she_stretched(self):
         shot = self.m8["shot"]
@@ -4585,6 +4593,34 @@ class SelfTest(QObject):
                    abs(u1 - u0) < abs(x1 - x0) - 0.05 and abs(abs(v1 - v0) - abs(y1 - y0)) < 0.005 and label == EN["tl_image"],
                    f"before={self.she_pic_pts} after={n['pts']} label={label!r}")
         self.shot_sw("shot_05_picture")
+
+    def s_shf_jpg(self):
+        new = self.shots_now() - self.shots_before
+        self.check("the screenshot key writes the settings' format (JPG here)",
+                   len(new) == 1 and next(iter(new)).suffix == ".jpg" and not QImage(str(next(iter(new)))).isNull(),
+                   f"new={[p.name for p in new]}")
+
+    def s_she_not_squeezed(self):
+        (u0, _), (u1, _) = self.m8["shot"].notes[self.she_pic_i]["pts"]
+        self.check("a picture's corner pulled past the other one stops short: never squeezed to nothing",
+                   abs(u1 - u0) >= 0.0199, f"width={abs(u1 - u0):.4f}")
+
+    def s_she_count(self):
+        self.she_count = len(self.m8["shot"].notes)
+
+    def s_she_kept(self):
+        shot = self.m8["shot"]
+        self.check("the screenshot key again while drawings are on: they stay, the window only comes forward",
+                   shot.active and len(shot.notes) == self.she_count > 0 and self.shot_window().isVisible(),
+                   f"before={self.she_count} now={len(shot.notes)}")
+
+    def s_she_typed_saved(self):
+        shot = self.m8["shot"]
+        new = self.shots_now() - self.shots_before
+        texts = [n["text"] for n in shot.notes if n["kind"] == "text"]
+        self.check("Save with a caption still being typed: the caption counts and is in the saved file",
+                   "Yo" in texts and len(new) == 1 and not self.find_sw("shotLayer").property("typing"),
+                   f"texts={texts} new={[p.name for p in new]}")
 
     def s_she_dropped(self):
         shot = self.m8["shot"]

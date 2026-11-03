@@ -11,6 +11,7 @@ Item {
     property QtObject ed: editor            // whose drawings: the editor's, or the screenshot's
     property bool still: false
     readonly property bool typing: input.note >= 0     // a caption is being typed
+    function commitText() { input.finish() }            // the text typed counts, as with Enter
     property string tool: "select"          // select | text | arrow | rect | ellipse | pen
     onToolChanged: input.finish()           // another tool taken: the text typed counts, as with Enter
     property color ink: "#F26A21"
@@ -257,6 +258,8 @@ Item {
                     var pts = n.pts.map(q => [q[0], q[1]])
                     pts[modelData[0]][0] = p[0]
                     pts[modelData[1]][1] = p[1]
+                    // a picture squeezed to nothing would be gone from sight and from the file
+                    if (n.kind === "image" && (Math.abs(pts[1][0] - pts[0][0]) < .02 || Math.abs(pts[1][1] - pts[0][1]) < .02)) return
                     ed.setNotePoints(n.i, pts)
                 }
             }

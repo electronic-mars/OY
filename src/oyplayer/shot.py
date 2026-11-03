@@ -9,14 +9,13 @@ picture by editor.paint_note(), so what is saved is what was seen.
 import copy
 import itertools
 import threading
-import time
 from pathlib import Path
 
-from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QUrl, Signal, Slot
 from PySide6.QtGui import QGuiApplication, QImage, QPainter
 from PySide6.QtQuick import QQuickImageProvider
 
-from .editor import LOGO_H, UNDO_MERGE, UNDO_STEPS, paint_note
+from .editor import LOGO_H, NoteEdits, paint_note
 from .i18n import tr
 from .log import log
 
@@ -33,7 +32,7 @@ class _Provider(QQuickImageProvider):
         return self.image
 
 
-class ShotEditor(QObject):
+class ShotEditor(NoteEdits):
     changed = Signal()
     opened = Signal()           # a new frame in the editor: its window comes up
     message = Signal(str)       # undo, copy, a picture that cannot be read: said in the window
@@ -44,12 +43,17 @@ class ShotEditor(QObject):
         self.p, self.settings, self.folder = player, settings, folder
         self._active, self._img, self._src, self._name = False, QImage(), "", ""
         self.provider = _Provider()
-        self._notes, self._sel, self._undo, self._redo, self._merge = [], -1, [], [], None
+        self._writers = []          # saves still being written: waited for on the way out
+        self._notes, self._noteSel, self._undo, self._redo, self._merge = [], -1, [], [], None
 
     @Slot()
     def open(self):
-        """The frame shown now becomes the picture; the drawings of the last one are gone."""
+        """The frame shown now becomes the picture. While drawings are on the last one, the
+        window only comes forward: a second press of the key must not wipe them."""
         if not self.p.hasFile:
+            return
+        if self._active and self._notes:
+            self.opened.emit()
             return
         try:
             img = self.p.grab_frame()
@@ -61,7 +65,7 @@ class ShotEditor(QObject):
             return
         self._img = self.provider.image = img
         self._src, self._name = f"image://shot/{next(_grabs)}", self.p.shot_name()
-        self._notes, self._sel, self._undo, self._redo, self._merge = [], -1, [], [], None
+        self._notes, self._noteSel, self._undo, self._redo, self._merge = [], -1, [], [], None
         self._active = True
         log.info("shot editor: %s", self._name)
         self.changed.emit()
@@ -74,7 +78,7 @@ class ShotEditor(QObject):
             return
         self._active = False
         self._img = self.provider.image = QImage()
-        self._src, self._notes, self._sel = "", [], -1
+        self._src, self._notes, self._noteSel = "", [], -1
         self.changed.emit()
 
     @Property(bool, notify=changed)
@@ -95,7 +99,7 @@ class ShotEditor(QObject):
 
     @Property(int, notify=changed)
     def noteSel(self):
-        return self._sel
+        return self._noteSel
 
     # ---- the picture with its drawings
     def picture(self):
@@ -124,11 +128,22 @@ class ShotEditor(QObject):
         img, quality = self.picture(), self.settings["shotQuality"] if ext == "jpg" else 50
 
         def write():
-            img.save(str(target), ext.upper(), quality)
-            log.info("shot editor saved %s", target)
-            self.saved.emit(str(target))
-        threading.Thread(target=write, daemon=True).start()
+            if img.save(str(target), ext.upper(), quality):
+                log.info("shot editor saved %s", target)
+                self.saved.emit(str(target))
+            else:       # a full or read-only drive: no empty file left with the name
+                log.warning("shot editor could not write %s", target)
+                target.unlink(missing_ok=True)
+                self.message.emit(tr("osd_shot_failed"))
+        self._writers = [t for t in self._writers if t.is_alive()]
+        self._writers.append(threading.Thread(target=write))
+        self._writers[-1].start()
         return str(target)
+
+    def wait(self):
+        """The app leaves with os._exit, which would cut a save short."""
+        for t in self._writers:
+            t.join()
 
     @Slot()
     def copy(self):
@@ -137,23 +152,16 @@ class ShotEditor(QObject):
             self.message.emit(tr("osd_shot_copied"))
 
     # ---- undo: every change keeps the state it replaced, under a name said in the window
-    def _mark(self, what, merge=None):
-        now = time.monotonic()
-        if merge is not None and self._merge and self._merge[0] == merge and now - self._merge[1] < UNDO_MERGE:
-            self._merge = (merge, now)
-            return
-        self._merge = (merge, now) if merge is not None else None
-        self._undo.append((what, copy.deepcopy((self._notes, self._sel))))
-        del self._undo[:-UNDO_STEPS]
-        self._redo.clear()
+    def _snap(self):
+        return copy.deepcopy((self._notes, self._noteSel))
 
     def _swap(self, src, dst, done, nothing):
         if not src:
             self.message.emit(tr(nothing))
             return
         what, state = src.pop()
-        dst.append((what, copy.deepcopy((self._notes, self._sel))))
-        self._notes, self._sel = state
+        dst.append((what, self._snap()))
+        self._notes, self._noteSel = state
         self._merge = None
         self.message.emit(tr(done, what))
         self.changed.emit()
@@ -172,9 +180,9 @@ class ShotEditor(QObject):
         self._mark(tr("undo_add", tr("note_" + kind)))
         self._notes.append({"kind": kind, "color": color, "size": size, "text": "",
                             "pts": [[float(x), float(y)] for x, y in pts]})
-        self._sel = len(self._notes) - 1
+        self._noteSel = len(self._notes) - 1
         self.changed.emit()
-        return self._sel
+        return self._noteSel
 
     @Slot(str, result=int)
     def addImage(self, url):
@@ -188,66 +196,20 @@ class ShotEditor(QObject):
         self._mark(tr("undo_add", tr("note_image")))
         self._notes.append({"kind": "image", "color": "#FFFFFF", "text": "", "src": src, "opacity": 1.0,
                             "pts": [[0.97 - wf, 0.04], [0.97, 0.04 + LOGO_H]]})
-        self._sel = len(self._notes) - 1
+        self._noteSel = len(self._notes) - 1
         self.changed.emit()
-        return self._sel
-
-    @Slot(int, float)
-    def setNoteOpacity(self, i, v):
-        if self._notes[i].get("opacity", 1.0) != v:
-            self._mark(tr("undo_opacity"))
-            self._notes[i]["opacity"] = v
-            self.changed.emit()
-
-    @Slot(int, "QVariantList")
-    def setNotePoints(self, i, pts):
-        self._mark(tr("undo_move", tr("note_" + self._notes[i]["kind"])), merge=("pts", i))
-        self._notes[i]["pts"] = [[float(x), float(y)] for x, y in pts]
-        self.changed.emit()
-
-    @Slot(int, str)
-    def setNoteText(self, i, text):
-        """An empty text takes the text drawing away; the first text is part of making it."""
-        old = self._notes[i]["text"]
-        if text.strip():
-            if text == old:
-                return
-            if old:
-                self._mark(tr("undo_text"))
-            self._notes[i]["text"] = text
-        else:
-            if old:
-                self._mark(tr("undo_delete", tr("note_text")))
-            elif self._undo and self._undo[-1][0] == tr("undo_add", tr("note_text")):
-                self._undo.pop()     # a text drawing left empty was never made
-            del self._notes[i]
-            self._sel = -1
-        self.changed.emit()
-
-    @Slot(int, str)
-    def setNoteColor(self, i, color):
-        if color != self._notes[i]["color"]:
-            self._mark(tr("undo_color", tr("note_" + self._notes[i]["kind"])))
-            self._notes[i]["color"] = color
-            self.changed.emit()
-
-    @Slot(int, float)
-    def setNoteSize(self, i, size):
-        if size != self._notes[i].get("size", 1.0):
-            self._mark(tr("undo_size", tr("note_" + self._notes[i]["kind"])))
-            self._notes[i]["size"] = size
-            self.changed.emit()
+        return self._noteSel
 
     @Slot(int)
     def selectNote(self, i):
-        if i != self._sel:
-            self._sel = i
+        if i != self._noteSel:
+            self._noteSel = i
             self.changed.emit()
 
     @Slot()
     def removeSelected(self):
-        if 0 <= self._sel < len(self._notes):
-            self._mark(tr("undo_delete", tr("note_" + self._notes[self._sel]["kind"])))
-            del self._notes[self._sel]
-            self._sel = -1
+        if 0 <= self._noteSel < len(self._notes):
+            self._mark(tr("undo_delete", tr("note_" + self._notes[self._noteSel]["kind"])))
+            del self._notes[self._noteSel]
+            self._noteSel = -1
             self.changed.emit()

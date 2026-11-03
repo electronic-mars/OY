@@ -348,6 +348,7 @@ def main(argv):
     # before mpv itself is terminated.
     del engine
     core.terminate()
+    shot.wait()
     if updater.installer:
         # everything is written and closed: the installer may replace the player's files
         # and start it again

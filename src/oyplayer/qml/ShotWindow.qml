@@ -31,14 +31,19 @@ Window {
         if (!app.selftest) requestActivate()
     }
     onClosing: shot.close()
+    // the player's window closed: this one goes too, or it would keep the program running
+    Connections { target: sw.main; function onClosing() { sw.close() } }
+    // a caption being typed counts in what is saved or copied, as with Enter
+    function save() { noteLayer.commitText(); shot.save() }
+    function copy() { noteLayer.commitText(); shot.copy() }
     Connections { target: shot; function onOpened() { sw.openOver(sw.main) }
                   function onMessage(t) { msg.show(t) } function onSaved(p) { toast.show(p) } }
 
     // the keys of the card and the foot; while a caption is typed they are the text's
     Shortcut { enabled: !noteLayer.typing; sequences: [StandardKey.Undo]; onActivated: shot.undo() }
     Shortcut { enabled: !noteLayer.typing; sequences: [StandardKey.Redo, "Ctrl+Shift+Z"]; onActivated: shot.redo() }
-    Shortcut { enabled: !noteLayer.typing; sequences: [StandardKey.Copy]; onActivated: shot.copy() }
-    Shortcut { sequences: [StandardKey.Save]; onActivated: shot.save() }
+    Shortcut { enabled: !noteLayer.typing; sequences: [StandardKey.Copy]; onActivated: sw.copy() }
+    Shortcut { sequences: [StandardKey.Save]; onActivated: sw.save() }
     Shortcut { enabled: !noteLayer.typing; sequences: [StandardKey.Delete]; onActivated: shot.removeSelected() }
     Shortcut { enabled: !noteLayer.typing; sequence: "Esc"
                onActivated: { if (shot.noteSel >= 0) shot.selectNote(-1); else sw.close() } }
@@ -119,8 +124,8 @@ Window {
             id: buttons
             anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
             spacing: 8
-            PillButton { objectName: "shotCopy"; text: L.t.shot_copy; onClicked: shot.copy() }
-            PillButton { objectName: "shotSave"; text: L.t.shot_save; accent: true; onClicked: shot.save() }
+            PillButton { objectName: "shotCopy"; text: L.t.shot_copy; onClicked: sw.copy() }
+            PillButton { objectName: "shotSave"; text: L.t.shot_save; accent: true; onClicked: sw.save() }
             PillButton { objectName: "shotClose"; text: L.t.shot_close; onClicked: sw.close() }
         }
     }

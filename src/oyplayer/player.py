@@ -521,7 +521,9 @@ class Player(QObject):
         if not self._state["path"]:
             return
         Path(folder).mkdir(parents=True, exist_ok=True)
-        target = Path(folder) / f"{self.shot_name()}.png"
+        # the settings' format (mpv's screenshot-format): mpv takes it from the file's extension
+        ext = "jpg" if self.mpv["screenshot-format"] in ("jpg", "jpeg") else "png"
+        target = Path(folder) / f"{self.shot_name()}.{ext}"
         log.info("screenshot %s", target)
 
         def done(error, _result):
@@ -530,7 +532,13 @@ class Player(QObject):
                 log.warning("screenshot failed: %s", error)
             else:
                 self.shotSaved.emit(str(target))
-        self.mpv.command_async("screenshot-to-file", str(target), "video", callback=done)
+
+        def lost(future):
+            # python-mpv runs done() only after reading mpv's reply; a reply it cannot read
+            # ends up in the future, unseen
+            if future.exception():
+                log.warning("screenshot failed: %s", future.exception())
+        self.mpv.command_async("screenshot-to-file", str(target), "video", callback=done).add_done_callback(lost)
 
     def grab_frame(self):
         """The frame shown, without the OSD, straight from mpv's memory: 0.1 s for 4K, where
