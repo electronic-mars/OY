@@ -522,9 +522,15 @@ class Player(QObject):
             return
         Path(folder).mkdir(parents=True, exist_ok=True)
         target = Path(folder) / f"{self.shot_name()}.png"
-        self.mpv.screenshot_to_file(str(target), "video")
         log.info("screenshot %s", target)
-        self.shotSaved.emit(str(target))
+
+        def done(error, _result):
+            # a 4K PNG takes mpv about a second: written aside, the picture goes on meanwhile
+            if error:
+                log.warning("screenshot failed: %s", error)
+            else:
+                self.shotSaved.emit(str(target))
+        self.mpv.command_async("screenshot-to-file", str(target), "video", callback=done)
 
     def grab_frame(self, target):
         """The frame shown, without the OSD, into a PNG file (the screenshot editor's picture)."""
