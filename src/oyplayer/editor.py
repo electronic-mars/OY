@@ -171,6 +171,9 @@ def paint_note(p, n, box):
     elif n["kind"] == "rect":
         p.setPen(pen)
         p.drawRect(QRectF(pts[0], pts[1]).normalized())
+    elif n["kind"] == "ellipse":
+        p.setPen(pen)
+        p.drawEllipse(QRectF(pts[0], pts[1]).normalized())
     elif n["kind"] == "pen":
         p.setPen(pen)
         p.drawPolyline(QPolygonF(pts))
@@ -237,7 +240,7 @@ class Editor(QObject):
         # one choice for the whole edit: a fragment (_selected) or a drawing (_noteSel), never both
         self._selected = -1
         self._cue = -1               # a fragment just clicked: Space plays the edit from it
-        # drawings: kind (text|arrow|rect|pen), path, a, b (seconds of that file), color,
+        # drawings: kind (text|arrow|rect|ellipse|pen|image), path, a, b (seconds of that file), color,
         # pts (fractions of the picture), text
         self._notes = []
         self._noteSel = -1

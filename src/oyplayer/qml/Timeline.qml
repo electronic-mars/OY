@@ -235,7 +235,7 @@ Item {
                                                   .filter((k, i, a) => a.indexOf(k) === i)
                 y: lane.y + index * tl.pitch + (tl.pitch - 4 - height) / 2
                 dot: inks.length === 1 ? (Qt.colorEqual(inks[0], "#FFFFFF") ? "#E9E6DF" : inks[0]) : Theme.inkDim
-                word: ({ arrow: L.t.tl_arrow, rect: L.t.tl_rect, pen: L.t.tl_pen, text: L.t.tl_text, image: L.t.tl_image })[kind] || L.t.tl_drawings
+                word: ({ arrow: L.t.tl_arrow, rect: L.t.tl_rect, ellipse: L.t.tl_ellipse, pen: L.t.tl_pen, text: L.t.tl_text, image: L.t.tl_image })[kind] || L.t.tl_drawings
                 on: tl.span !== null && tl.span.track === index
             }
         }

@@ -1,7 +1,7 @@
 import QtQuick
 
 // The editor's drawing tools, a card over the picture (Argon's v1, 01.11): pick and move,
-// pencil, rectangle, arrow, text, a logo; five inks (a logo chosen: its opacity); three lines;
+// pencil, rectangle, circle, arrow, text, a picture; six inks (a picture chosen: its opacity); three lines;
 // the turn and the frame; undo, redo; delete the chosen drawing. The tool in use is pressed in,
 // its sign in the accent. Over a still screenshot (`still`, `ed` = shot) the same card without the
 // turn and the frame, which belong to a video.
@@ -42,13 +42,15 @@ Rectangle {
               tip: L.t.draw_pen; onClicked: bar.toolPicked("pen") }
         Key { objectName: "drawRect"; glyph: Theme.icRect; chosen: bar.tool === "rect"
               tip: L.t.draw_rect; onClicked: bar.toolPicked("rect") }
+        Key { objectName: "drawEllipse"; glyph: Theme.icEllipse; chosen: bar.tool === "ellipse"
+              tip: L.t.draw_ellipse; onClicked: bar.toolPicked("ellipse") }
         Key { objectName: "drawArrow"; glyph: Theme.icArrow; chosen: bar.tool === "arrow"
               tip: L.t.draw_arrow; onClicked: bar.toolPicked("arrow") }
         Key { objectName: "drawText"; glyph: Theme.icText; chosen: bar.tool === "text"
               tip: L.t.draw_text; onClicked: bar.toolPicked("text") }
         Key { objectName: "drawImage"; glyph: "image-plus"; tip: L.t.draw_image; onClicked: bar.imageRequested() }
         Sep {}
-        // a logo chosen: how much it shows through, in place of the inks
+        // a picture chosen: how much it shows through, in place of the inks
         Repeater {
             model: bar.logo ? [1.0, 0.6, 0.3] : []
             Rectangle {
@@ -66,7 +68,7 @@ Rectangle {
             }
         }
         Repeater {
-            model: bar.logo ? [] : ["#FFFFFF", "#FFD60A", "#F26A21", "#3B82F6", "#E5484D"]
+            model: bar.logo ? [] : ["#FFFFFF", "#FFD60A", "#F26A21", "#3B82F6", "#E5484D", "#000000"]
             Rectangle {
                 objectName: "ink" + index
                 anchors.verticalCenter: parent.verticalCenter
@@ -76,8 +78,9 @@ Rectangle {
                 // (the editor's yellow ring on the yellow ink was 1.1:1)
                 border.color: Qt.colorEqual(bar.ink, modelData) ? Theme.tx : "transparent"
                 border.width: 2
+                // black on the dark card: a lighter edge, or it is a hole
                 Rectangle { anchors.centerIn: parent; width: 14; height: 14; radius: 7; color: modelData
-                            border.color: Theme.lineHi }
+                            border.color: modelData === "#000000" ? Theme.glyph : Theme.lineHi }
                 MouseArea { anchors.fill: parent; onClicked: bar.inkPicked(modelData) }
             }
         }

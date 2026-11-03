@@ -4009,7 +4009,7 @@ class SelfTest(QObject):
         self.check("a logo goes to the upper right, 15 % of the frame high, over the whole file; saving says why it re-encodes",
                    n.get("kind") == "image" and abs(n["pts"][1][1] - n["pts"][0][1] - 0.15) < 0.01 and n["pts"][1][0] > 0.9
                    and n["a"] == 0 and logo is not None and logo.isVisible()
-                   and self.ed.reason == "has a logo" and not self.ed.lossless,
+                   and self.ed.reason == "has a picture" and not self.ed.lossless,
                    f"note={n} shown={logo is not None and logo.isVisible()} reason={self.ed.reason!r}")
         self.shot("fb4_08_logo")
 
@@ -4418,6 +4418,14 @@ class SelfTest(QObject):
             (0, lambda: self.click_sw("drawRedo")), (300, lambda: self.click_sw("shotCopy")), (400, self.s_she_copied),
             (0, lambda: self.click_sw("shotSave")), (500, self.s_she_saved),
             (0, lambda: self.click_sw("shotClose")), (500, self.s_she_closed),
+            # a circle in black; a text left for another tool counts; a picture stretched by a corner
+            (0, self.s_shf_prep), (0, lambda: self.a.run("screenshot")), (900, lambda: self.click_sw("ink5")),
+            (0, lambda: self.click_sw("drawEllipse")), (200, lambda: self.drag_sw([(0.2, 0.2), (0.4, 0.5)])),
+            (300, self.s_she_ellipse), (0, lambda: self.click_sw("drawText")),
+            (200, lambda: self.drag_sw([(0.6, 0.2)])), (300, lambda: self.type_sw("Hi")),
+            (200, lambda: self.click_sw("drawArrow")), (300, self.s_she_text_kept),
+            (0, self.s_she_picture), (500, self.s_she_stretch), (400, self.s_she_stretched),
+            (0, lambda: self.click_sw("shotClose")),
             # drawn on again and closed: nothing is saved
             (0, self.s_shf_prep), (0, lambda: self.a.run("screenshot")), (900, lambda: self.click_sw("drawPen")),
             (200, lambda: self.drag_sw([(0.2, 0.2), (0.4, 0.3), (0.6, 0.2)])), (300, lambda: self.click_sw("shotClose")),
@@ -4449,6 +4457,11 @@ class SelfTest(QObject):
             for k in range(1, 5):
                 QTest.mouseMove(sw, at(a[0] + (b[0] - a[0]) * k / 4, a[1] + (b[1] - a[1]) * k / 4))
         QTest.mouseRelease(sw, Qt.LeftButton, Qt.NoModifier, at(*pts[-1]))
+
+    def type_sw(self, text):
+        for ch in text:
+            for t in (QEvent.KeyPress, QEvent.KeyRelease):
+                QGuiApplication.sendEvent(self.shot_window(), QKeyEvent(t, ord(ch.upper()), Qt.NoModifier, 0, 0, 0, ch))
 
     def shots_now(self):
         return set((self.out / "shots").glob("*.*")) if (self.out / "shots").exists() else set()
@@ -4527,6 +4540,51 @@ class SelfTest(QObject):
         shot = self.m8["shot"]
         self.check("Close: the editor's window goes and its picture is dropped",
                    not shot.active and not self.shot_window().isVisible() and shot._img.isNull())
+
+    def s_she_ellipse(self):
+        shot = self.m8["shot"]
+        n = shot.notes[-1] if shot.notes else {}
+        img, src = shot.picture(), shot._img
+        self.check("a circle in black ink: drawn round its box (its edge painted, its middle not)",
+                   n.get("kind") == "ellipse" and n.get("color", "").lower() == "#000000"
+                   and self.differs(img, src, 0.2, 0.35) and not self.differs(img, src, 0.3, 0.35), f"{n}")
+
+    def s_she_text_kept(self):
+        shot = self.m8["shot"]
+        n = shot.notes[-1] if shot.notes else {}
+        self.check("a text typed and left for another tool counts, as with Enter",
+                   n.get("kind") == "text" and n.get("text") == "Hi" and not self.find_sw("shotLayer").property("typing"),
+                   f"kinds={[x['kind'] for x in shot.notes]} last={n}")
+
+    def s_she_picture(self):
+        img = QImage(60, 30, QImage.Format_RGB32)
+        img.fill(QColor("#C02020"))
+        self.she_pic = self.out / "shot_picture.png"
+        img.save(str(self.she_pic))
+        shot = self.m8["shot"]
+        self.she_pic_i = shot.addImage(str(self.she_pic))
+        self.she_pic_pts = [list(q) for q in shot.notes[self.she_pic_i]["pts"]]
+
+    def s_she_stretch(self):
+        """The chosen picture's lower right corner pulled 120 px to the left, not up or down."""
+        sw, h = self.shot_window(), self.find_sw("noteHandle3")
+        c = h.mapToScene(QPointF(h.width() / 2, h.height() / 2))
+        a = QPoint(round(c.x()), round(c.y()))
+        QTest.mousePress(sw, Qt.LeftButton, Qt.NoModifier, a)
+        for k in range(1, 7):
+            QTest.mouseMove(sw, a - QPoint(20 * k, 0))
+        QTest.mouseRelease(sw, Qt.LeftButton, Qt.NoModifier, a - QPoint(120, 0))
+
+    def s_she_stretched(self):
+        shot = self.m8["shot"]
+        n = shot.notes[self.she_pic_i]
+        (x0, y0), (x1, y1) = self.she_pic_pts
+        (u0, v0), (u1, v1) = n["pts"]
+        label = self.find_sw("noteLabel").childItems()[0].property("text")
+        self.check("a picture is stretched by its corner, its proportions free (narrower here, as high), called a picture",
+                   abs(u1 - u0) < abs(x1 - x0) - 0.05 and abs(abs(v1 - v0) - abs(y1 - y0)) < 0.005 and label == EN["tl_image"],
+                   f"before={self.she_pic_pts} after={n['pts']} label={label!r}")
+        self.shot_sw("shot_05_picture")
 
     def s_she_dropped(self):
         shot = self.m8["shot"]

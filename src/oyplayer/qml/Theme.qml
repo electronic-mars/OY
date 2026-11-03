@@ -154,6 +154,7 @@ QtObject {
     readonly property string icText: "type"
     readonly property string icArrow: "move-up-right"
     readonly property string icRect: "square"
+    readonly property string icEllipse: "circle"
     readonly property string icPen: "pencil"
     // the playlist and the settings
     readonly property string icAdd: "plus"

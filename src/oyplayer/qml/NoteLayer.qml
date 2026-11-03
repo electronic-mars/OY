@@ -11,7 +11,8 @@ Item {
     property QtObject ed: editor            // whose drawings: the editor's, or the screenshot's
     property bool still: false
     readonly property bool typing: input.note >= 0     // a caption is being typed
-    property string tool: "select"          // select | text | arrow | rect | pen
+    property string tool: "select"          // select | text | arrow | rect | ellipse | pen
+    onToolChanged: input.finish()           // another tool taken: the text typed counts, as with Enter
     property color ink: "#F26A21"
     property real size: 1                   // the line: thin .6, medium 1, thick 1.6 (the draw bar)
     property real topClear: 0               // the draw bar lies over the picture down to here
@@ -72,8 +73,8 @@ Item {
     }
     function clamp(m) { return [Math.max(0, Math.min(1, m.x / width)), Math.max(0, Math.min(1, m.y / height))] }
 
-    // pictures (a logo) are images over the frame, under the drawn lines; the chosen one has a
-    // corner to size it by, its proportions kept
+    // pictures are images over the frame, under the drawn lines; the chosen one is stretched by
+    // its four corners, as a rectangle
     Repeater {
         model: layer.shown.filter(n => n.kind === "image")
         Image {
@@ -83,31 +84,13 @@ Item {
             // which wins over the root's id here
             readonly property Item area: parent
             readonly property var pts: modelData.pts
-            x: pts[0][0] * area.width; y: pts[0][1] * area.height
-            width: (pts[1][0] - pts[0][0]) * area.width; height: (pts[1][1] - pts[0][1]) * area.height
+            // a corner dragged past the opposite one turns the box over: kept the right way round
+            x: Math.min(pts[0][0], pts[1][0]) * area.width; y: Math.min(pts[0][1], pts[1][1]) * area.height
+            width: Math.abs(pts[1][0] - pts[0][0]) * area.width; height: Math.abs(pts[1][1] - pts[0][1]) * area.height
             source: "file:///" + modelData.src.replace(/\\/g, "/")
             opacity: (modelData.opacity === undefined ? 1 : modelData.opacity) * (modelData.ghost ? .35 : 1)
             fillMode: Image.Stretch
             smooth: true; mipmap: true
-            Rectangle {
-                objectName: "logoCorner"
-                visible: modelData.i === ed.noteSel && !modelData.ghost
-                x: parent.width - 6; y: parent.height - 6; width: 12; height: 12; radius: 3
-                color: "#EDEAE3"; border.color: Qt.rgba(0, 0, 0, .85)
-                MouseArea {
-                    anchors.fill: parent; anchors.margins: -4
-                    cursorShape: Qt.SizeFDiagCursor
-                    property var from: null
-                    onPressed: (m) => { from = { pts: modelData.pts.map(q => [q[0], q[1]]), x: mapToItem(logoImg.area, m.x, m.y).x } }
-                    onPositionChanged: (m) => {
-                        if (!from) return
-                        var p0 = from.pts[0], p1 = from.pts[1], k = (p1[1] - p0[1]) / Math.max(1e-6, p1[0] - p0[0])
-                        var x1 = Math.max(p0[0] + 0.02, Math.min(1, p1[0] + (mapToItem(logoImg.area, m.x, m.y).x - from.x) / logoImg.area.width))
-                        ed.setNotePoints(modelData.i, [p0, [x1, p0[1] + (x1 - p0[0]) * k]])
-                    }
-                    onReleased: from = null
-                }
-            }
         }
     }
 
@@ -124,6 +107,11 @@ Item {
             if (n.kind === "rect") {
                 ctx.strokeRect(Math.min(p[0].x, p[1].x), Math.min(p[0].y, p[1].y),
                                Math.abs(p[1].x - p[0].x), Math.abs(p[1].y - p[0].y))
+            } else if (n.kind === "ellipse") {
+                ctx.beginPath()
+                ctx.ellipse(Math.min(p[0].x, p[1].x), Math.min(p[0].y, p[1].y),
+                            Math.abs(p[1].x - p[0].x), Math.abs(p[1].y - p[0].y))
+                ctx.stroke()
             } else if (n.kind === "pen") {
                 ctx.beginPath(); ctx.moveTo(p[0].x, p[0].y)
                 for (var k = 1; k < p.length; k++) ctx.lineTo(p[k].x, p[k].y)
@@ -174,6 +162,7 @@ Item {
         cursorShape: layer.tool === "select" ? Qt.ArrowCursor : Qt.CrossCursor
         property var moving: null               // {i, from: [x, y], pts}
         onPressed: (m) => {
+            input.finish()      // a click past the text being typed: it counts, as with Enter
             var p = layer.clamp(m)
             if (layer.tool === "select") {
                 var i = layer.hit(m.x, m.y)
@@ -221,7 +210,7 @@ Item {
     }
 
     // the chosen drawing: its name and times on a plate of the accent over it (Argon's v1, 01.11),
-    // and a rectangle's corners, an arrow's ends to take and move
+    // and the corners of a rectangle, a circle and a picture, an arrow's ends to take and move
     readonly property var chosen: shown.find(n => n.i === ed.noteSel && !n.ghost) || null
     function mmss(t) {
         var s = Math.max(0, Math.round(t)), two = (v) => (v < 10 ? "0" : "") + v
@@ -245,9 +234,10 @@ Item {
         }
     }
     Repeater {
-        // [which point's x, which point's y]: a rectangle's four corners, an arrow's two ends
+        // [which point's x, which point's y]: the four corners of a rectangle, a circle and a
+        // picture, an arrow's two ends
         model: !layer.chosen || input.note >= 0 ? []
-               : layer.chosen.kind === "rect" ? [[0, 0], [1, 0], [0, 1], [1, 1]]
+               : ["rect", "ellipse", "image"].includes(layer.chosen.kind) ? [[0, 0], [1, 0], [0, 1], [1, 1]]
                : layer.chosen.kind === "arrow" ? [[0, 0], [1, 1]] : []
         Rectangle {
             objectName: "noteHandle" + index
