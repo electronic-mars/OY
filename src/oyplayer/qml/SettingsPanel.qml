@@ -41,7 +41,7 @@ Popup {
         ["audioDevice", "channels", "passthrough", "audioMode", "maxVolume", "audioLang", "radioDir", "radioRecDir"],
         ["subsOn", "subScale", "subLang", "subFolders"],
         ["wheel", "leftClick", "middleClick", "doubleClick", "sideButtons", "preview", "globalMedia", "seekStep", "jumpStep"],
-        ["shotFormat", "shotQuality", "shotDir", "exportCodec", "mpvOptions"],
+        ["shotMode", "shotFormat", "shotQuality", "shotDir", "exportCodec", "mpvOptions"],
         []]
 
     component Card: Rectangle {
@@ -475,6 +475,10 @@ Popup {
                     id: p5; visible: sp.section === 6; width: parent.width; spacing: 10
                     Caption { text: L.t.c_shots }
                     Card {
+                        SettingRow { title: L.t.s_shot_mode; below: true; hint: L.t.s_shot_mode_h
+                                     Segmented { objectName: "setShotMode"; width: 300; value: sp.v.shotMode
+                                                 options: [{ value: "file", text: L.t.shot_mode_file }, { value: "edit", text: L.t.shot_mode_edit }]
+                                                 onPicked: (x) => settings.set("shotMode", x) } }
                         SettingRow { title: L.t.s_folder; below: true; hint: app.screenshotDir
                                      Row { spacing: 6
                                            KeyCap { glyph: Theme.icChooseDir; glyphSize: 15; width: 30; height: 26; tip: L.t.choose_folder; onClicked: shotFolder.open() }

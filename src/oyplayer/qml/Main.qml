@@ -190,7 +190,11 @@ Window {
             if (editor.active) all.push("strip")
             win.area = all[(all.indexOf(win.area) + step + all.length) % all.length]
         }
-        function onScreenshotRequested() { player.screenshot(app.screenshotDir) }
+        // the screenshot key: saved at once, or (setting) the frame in the screenshot editor
+        function onScreenshotRequested() {
+            if (settings.values.shotMode !== "edit") { player.screenshot(app.screenshotDir); return }
+            shot.open()
+        }
         // P is the List: with History or Radio open it turns to the List rather than closing
         function onTogglePlaylistRequested() {
             if (win.playlistShown && playlistPanel.tab !== 0) playlistPanel.tab = 0
@@ -378,6 +382,7 @@ Window {
     Connections {
         target: player
         function onOsdMessage(text) { osd.show(text) }
+        function onShotSaved(path) { shotToast.show(path) }
     }
 
     FileDialog {
@@ -633,6 +638,12 @@ Window {
         }
         Timer { id: osdTimer; interval: 1400; onTriggered: osd.opacity = 0 }
         Behavior on opacity { NumberAnimation { duration: 200 } }
+    }
+
+    ShotToast {
+        id: shotToast
+        z: 6
+        anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: win.panelH + 12 }
     }
 
     DrawBar {

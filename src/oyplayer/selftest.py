@@ -427,6 +427,7 @@ class SelfTest(QObject):
             "fb4": self.fb4_steps,     # feedback 4 (0.11.1): the mouse, settings, the picture card
             "upd": self.upd_steps,     # the update from the release page
             "skins": self.skins_steps,     # sealed skins: each drawn in the real window, the default back
+            "shot": self.shot_steps,     # the screenshot: its name and folder; the screenshot editor
         }
         # tests\next-run-focus (used up like next-run-exe): the quick part and only the blocks it
         # names; empty, the quick part alone. Without it, everything.
@@ -4400,6 +4401,138 @@ class SelfTest(QObject):
             (0, lambda: self.s_up_feed("down")), (0, press), (0, wait("failed")), (300, self.s_up_offline),
             (0, self.s_up_done),
         ]
+
+    # ---- the screenshot: «Open the folder» under a saved one; the screenshot editor
+    def shot_steps(self):
+        return [
+            (0, lambda: (self.pl.clear(), self.pl.add([self.media], True))), (1500, lambda: self.p.seek(3.0)),
+            (700, lambda: self.settings.set("shotMode", "file")), (0, self.s_shf_prep),
+            (0, lambda: self.a.run("screenshot")), (500, self.s_shf_toast), (3300, self.s_shf_gone),
+            (0, lambda: self.click("keySettings")), (600, lambda: self.settings_page(6, "setShotMode")),
+            (900, self.s_shm_setting), (0, lambda: self.key("Esc")),
+            (300, lambda: self.settings.set("shotMode", "edit")), (0, self.s_shf_prep),
+            (0, lambda: self.a.run("screenshot")), (900, self.s_she_open),
+            (0, lambda: self.click_sw("drawArrow")), (200, lambda: self.drag_sw([(0.3, 0.3), (0.5, 0.45), (0.7, 0.6)])),
+            (0, lambda: self.click_sw("drawRect")), (200, lambda: self.drag_sw([(0.1, 0.7), (0.25, 0.9)])),
+            (400, self.s_she_drawn), (0, lambda: self.click_sw("drawUndo")), (300, self.s_she_undone),
+            (0, lambda: self.click_sw("drawRedo")), (300, lambda: self.click_sw("shotCopy")), (400, self.s_she_copied),
+            (0, lambda: self.click_sw("shotSave")), (500, self.s_she_saved),
+            (0, lambda: self.click_sw("shotClose")), (500, self.s_she_closed),
+            # drawn on again and closed: nothing is saved
+            (0, self.s_shf_prep), (0, lambda: self.a.run("screenshot")), (900, lambda: self.click_sw("drawPen")),
+            (200, lambda: self.drag_sw([(0.2, 0.2), (0.4, 0.3), (0.6, 0.2)])), (300, lambda: self.click_sw("shotClose")),
+            (500, self.s_she_dropped), (0, lambda: self.settings.set("shotMode", "file")),
+        ]
+
+    def shot_window(self):
+        return self.m8["shot_win"]
+
+    def find_sw(self, name):
+        return self.find_item(name, self.shot_window().contentItem())
+
+    def shot_sw(self, name):
+        capture(int(self.shot_window().winId())).save(str(self.out / f"{name}.png"))
+
+    def click_sw(self, name):
+        item = self.find_sw(name)
+        c = item.mapToScene(QPointF(item.width() / 2, item.height() / 2))
+        QTest.mouseClick(self.shot_window(), Qt.LeftButton, Qt.NoModifier, QPoint(round(c.x()), round(c.y())))
+
+    def drag_sw(self, pts):
+        sw, layer = self.shot_window(), self.find_sw("shotLayer")
+
+        def at(x, y):
+            c = layer.mapToScene(QPointF(x * layer.width(), y * layer.height()))
+            return QPoint(round(c.x()), round(c.y()))
+        QTest.mousePress(sw, Qt.LeftButton, Qt.NoModifier, at(*pts[0]))
+        for a, b in zip(pts, pts[1:]):
+            for k in range(1, 5):
+                QTest.mouseMove(sw, at(a[0] + (b[0] - a[0]) * k / 4, a[1] + (b[1] - a[1]) * k / 4))
+        QTest.mouseRelease(sw, Qt.LeftButton, Qt.NoModifier, at(*pts[-1]))
+
+    def shots_now(self):
+        return set((self.out / "shots").glob("*.*")) if (self.out / "shots").exists() else set()
+
+    def differs(self, img, src, nx, ny):
+        """The picture at this point (fractions of it) is not the frame's: something is drawn there."""
+        x, y = round(nx * (src.width() - 1)), round(ny * (src.height() - 1))
+        a, b = QColor(img.pixel(x, y)), QColor(src.pixel(x, y))
+        return abs(a.red() - b.red()) + abs(a.green() - b.green()) + abs(a.blue() - b.blue()) > 60
+
+    def s_shf_prep(self):
+        self.shots_before = self.shots_now()
+
+    def s_shf_toast(self):
+        new = self.shots_now() - self.shots_before
+        toast, name, key = self.find_item("shotToast"), self.find_item("shotToastName"), self.find_item("shotToastOpen")
+        kr = key.mapRectToScene(key.boundingRect()).toRect()
+        self.check("a screenshot in «save to the folder»: one file, its name and «Open the folder» shown whole in the window",
+                   len(new) == 1 and toast.property("opacity") > 0.9 and name.property("text") == next(iter(new)).name
+                   and key.property("text") == EN["open_folder"] and not name.property("truncated")
+                   and QRect(0, 0, self.win.width(), self.win.height()).contains(kr),
+                   f"new={[p.name for p in new]} opacity={toast.property('opacity')} name={name.property('text')} key={kr.getRect()}")
+        self.shot("shot_01_toast")
+
+    def s_shf_gone(self):
+        toast = self.find_item("shotToast")
+        self.check("the screenshot's name and folder key go after 3 s", not toast.isVisible(), f"opacity={toast.property('opacity')}")
+
+    def s_shm_setting(self):
+        row = self.find_item("setShotMode")
+        self.check("the settings choose what the screenshot key does: save to the folder or open the editor",
+                   row is not None and row.isVisible() and row.property("value") == "file")
+        self.shot("shot_02_setting")
+
+    def s_she_open(self):
+        sw, shot, pic = self.shot_window(), self.m8["shot"], self.find_sw("shotPicture")
+        self.she_file = shot._src
+        self.she_src = QImage(self.she_file)
+        self.check("«open the editor»: the screenshot key opens the frame in its own window, nothing saved yet",
+                   shot.active and sw.isVisible() and pic.property("paintedWidth") > 0 and not self.she_src.isNull()
+                   and self.shots_now() == self.shots_before and shot.name.startswith(Path(self.media).stem),
+                   f"active={shot.active} visible={sw.isVisible()} painted={pic.property('paintedWidth')} name={shot.name}")
+        self.check("the editor's drawing card without the turn and the frame (a still picture has neither)",
+                   self.find_sw("shotDrawBar").isVisible() and not self.find_sw("drawRotate").isVisible()
+                   and not self.find_sw("drawFrame").isVisible())
+
+    def s_she_drawn(self):
+        kinds = [n["kind"] for n in self.m8["shot"].notes]
+        self.check("an arrow and a rectangle drawn on the screenshot", kinds == ["arrow", "rect"], f"{kinds}")
+        layer, h = self.find_sw("shotLayer"), self.find_sw("noteHandle3")
+        c = h.mapToItem(layer, QPointF(h.width() / 2, h.height() / 2)) if h else QPointF(-1, -1)
+        want = QPointF(0.25 * layer.width(), 0.9 * layer.height())
+        self.check("the chosen rectangle's corner handle lies on its corner", abs(c.x() - want.x()) < 3 and abs(c.y() - want.y()) < 3,
+                   f"handle={c.toTuple()} corner={want.toTuple()}")
+        self.shot_sw("shot_03_editor")
+
+    def s_she_undone(self):
+        kinds = [n["kind"] for n in self.m8["shot"].notes]
+        self.check("undo in the screenshot editor takes the rectangle away", kinds == ["arrow"], f"{kinds}")
+
+    def s_she_copied(self):
+        img = QGuiApplication.clipboard().image()
+        self.check("Copy: the screenshot with its drawings in the clipboard, the frame's size, the arrow in it",
+                   img.size() == self.she_src.size() and self.differs(img, self.she_src, 0.5, 0.45),
+                   f"clip={img.size().toTuple()} src={self.she_src.size().toTuple()}")
+
+    def s_she_saved(self):
+        new = self.shots_now() - self.shots_before
+        img = QImage(str(next(iter(new)))) if len(new) == 1 else QImage()
+        self.check("Save: one file in the screenshots folder with the arrow and the rectangle in it, its name and folder shown",
+                   len(new) == 1 and img.size() == self.she_src.size() and self.differs(img, self.she_src, 0.5, 0.45)
+                   and self.differs(img, self.she_src, 0.1, 0.8) and self.find_sw("shotToast").property("opacity") > 0.9,
+                   f"new={[p.name for p in new]} size={img.size().toTuple()}")
+        self.shot_sw("shot_04_saved")
+
+    def s_she_closed(self):
+        shot = self.m8["shot"]
+        self.check("Close: the editor's window goes and its picture file is removed",
+                   not shot.active and not self.shot_window().isVisible() and not Path(self.she_file).exists())
+
+    def s_she_dropped(self):
+        shot = self.m8["shot"]
+        self.check("drawn on and closed: nothing saved", not shot.active and self.shots_now() == self.shots_before,
+                   f"new={[p.name for p in self.shots_now() - self.shots_before]}")
 
     def up_text(self):
         return self.find_item("updateText").property("text")

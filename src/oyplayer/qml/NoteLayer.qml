@@ -4,9 +4,13 @@ import QtQuick
 // screen for its interval of the file. The layer lies exactly over the picture and keeps
 // points as fractions of it, so a drawing stays on its spot of the frame at any window
 // size; sizes are fractions of the picture's height, the same as editor.py's render_note()
-// uses for the saved file.
+// uses for the saved file. The same layer lies over a still screenshot (`still`, `ed` = shot):
+// there every drawing is on screen, with no interval and no player to pause.
 Item {
     id: layer
+    property QtObject ed: editor            // whose drawings: the editor's, or the screenshot's
+    property bool still: false
+    readonly property bool typing: input.note >= 0     // a caption is being typed
     property string tool: "select"          // select | text | arrow | rect | pen
     property color ink: "#F26A21"
     property real size: 1                   // the line: thin .6, medium 1, thick 1.6 (the draw bar)
@@ -23,14 +27,15 @@ Item {
     // one whose bar is pointed at also outside their interval, faded, so their ends can be set
     // on the timeline
     // read from Python when the edit changes, not on every frame with the position
-    readonly property var allNotes: editor.notes
+    readonly property var allNotes: ed.notes
     readonly property var shown: {
         var out = [], all = allNotes, t = player.position
+        if (still) return all.map(n => Object.assign({ ghost: false }, n))
         for (var k = 0; k < all.length; k++) {
             var n = all[k]
             if (n.path !== player.path) continue
             var inside = t >= n.a && t <= n.b
-            if (inside || n.i === editor.noteSel || n.i === lit) out.push(Object.assign({ ghost: !inside }, n))
+            if (inside || n.i === ed.noteSel || n.i === lit) out.push(Object.assign({ ghost: !inside }, n))
         }
         return out
     }
@@ -39,7 +44,7 @@ Item {
     onLitChanged: canvas.requestPaint()
     onWidthChanged: canvas.requestPaint()
     onHeightChanged: canvas.requestPaint()
-    Connections { target: editor; function onChanged() { canvas.requestPaint() } }
+    Connections { target: layer.ed; function onChanged() { canvas.requestPaint() } }
 
     FontMetrics { id: fm; font.family: Theme.uiFont; font.pixelSize: layer.textPx; font.weight: Font.DemiBold }
 
@@ -86,7 +91,7 @@ Item {
             smooth: true; mipmap: true
             Rectangle {
                 objectName: "logoCorner"
-                visible: modelData.i === editor.noteSel && !modelData.ghost
+                visible: modelData.i === ed.noteSel && !modelData.ghost
                 x: parent.width - 6; y: parent.height - 6; width: 12; height: 12; radius: 3
                 color: "#EDEAE3"; border.color: Qt.rgba(0, 0, 0, .85)
                 MouseArea {
@@ -98,7 +103,7 @@ Item {
                         if (!from) return
                         var p0 = from.pts[0], p1 = from.pts[1], k = (p1[1] - p0[1]) / Math.max(1e-6, p1[0] - p0[0])
                         var x1 = Math.max(p0[0] + 0.02, Math.min(1, p1[0] + (mapToItem(logoImg.area, m.x, m.y).x - from.x) / logoImg.area.width))
-                        editor.setNotePoints(modelData.i, [p0, [x1, p0[1] + (x1 - p0[0]) * k]])
+                        ed.setNotePoints(modelData.i, [p0, [x1, p0[1] + (x1 - p0[0]) * k]])
                     }
                     onReleased: from = null
                 }
@@ -156,9 +161,9 @@ Item {
             ctx.reset()
             for (var k = 0; k < layer.shown.length; k++) draw(ctx, layer.shown[k])
             if (layer.draft) draw(ctx, layer.draft)
-            var lit = layer.shown.find(n => n.i === layer.lit && n.i !== editor.noteSel)
+            var lit = layer.shown.find(n => n.i === layer.lit && n.i !== ed.noteSel)
             if (lit) frame(ctx, lit, false)
-            var sel = layer.shown.find(n => n.i === editor.noteSel)
+            var sel = layer.shown.find(n => n.i === ed.noteSel)
             if (sel && sel.i !== input.note) frame(ctx, sel, true)
         }
     }
@@ -172,16 +177,16 @@ Item {
             var p = layer.clamp(m)
             if (layer.tool === "select") {
                 var i = layer.hit(m.x, m.y)
-                editor.selectNote(i)
+                ed.selectNote(i)
                 // nothing here: the click belongs to the picture below (pause, window drag, fullscreen)
                 if (i < 0) { m.accepted = false; return }
                 // a copy: what editor.notes gives is a live view, it would move along with the drag
-                moving = { i: i, from: p, pts: editor.notes[i].pts.map(q => [q[0], q[1]]) }
+                moving = { i: i, from: p, pts: ed.notes[i].pts.map(q => [q[0], q[1]]) }
             } else if (layer.tool === "text") {
-                if (!player.paused) player.togglePause()   // a drawing belongs to the frame it is drawn on
-                input.start(editor.addNote("text", [p], layer.ink.toString(), 1))
+                if (!still && !player.paused) player.togglePause()   // a drawing belongs to the frame it is drawn on
+                input.start(ed.addNote("text", [p], layer.ink.toString(), 1))
             } else {
-                if (!player.paused) player.togglePause()
+                if (!still && !player.paused) player.togglePause()
                 layer.draft = { kind: layer.tool, color: layer.ink.toString(), size: layer.size, pts: [p, p], text: "", i: -1 }
             }
         }
@@ -189,7 +194,7 @@ Item {
             var p = layer.clamp(m)
             if (moving) {
                 var dx = p[0] - moving.from[0], dy = p[1] - moving.from[1]
-                editor.setNotePoints(moving.i, moving.pts.map(q => [q[0] + dx, q[1] + dy]))
+                ed.setNotePoints(moving.i, moving.pts.map(q => [q[0] + dx, q[1] + dy]))
             } else if (layer.draft) {
                 var d = layer.draft, last = d.pts[d.pts.length - 1]
                 if (d.kind !== "pen") d.pts[1] = p
@@ -205,19 +210,19 @@ Item {
             var b = layer.box(d)
             // a click without a drag is not a drawing
             var w = 2 * layer.lw * d.size
-            if (b.width - w > 4 || b.height - w > 4) editor.addNote(d.kind, d.pts, d.color, d.size)
+            if (b.width - w > 4 || b.height - w > 4) ed.addNote(d.kind, d.pts, d.color, d.size)
             canvas.requestPaint()
         }
         onDoubleClicked: (m) => {
             var i = layer.hit(m.x, m.y)
-            if (layer.tool === "select" && i >= 0 && editor.notes[i].kind === "text") input.start(i)
+            if (layer.tool === "select" && i >= 0 && ed.notes[i].kind === "text") input.start(i)
         }
         onWheel: (w) => w.accepted = false
     }
 
     // the chosen drawing: its name and times on a plate of the accent over it (Argon's v1, 01.11),
     // and a rectangle's corners, an arrow's ends to take and move
-    readonly property var chosen: shown.find(n => n.i === editor.noteSel && !n.ghost) || null
+    readonly property var chosen: shown.find(n => n.i === ed.noteSel && !n.ghost) || null
     function mmss(t) {
         var s = Math.max(0, Math.round(t)), two = (v) => (v < 10 ? "0" : "") + v
         return two(Math.floor(s / 60)) + ":" + two(s % 60)
@@ -234,8 +239,8 @@ Item {
         Text {
             id: labelText
             anchors.centerIn: parent
-            text: layer.chosen ? (L.t["tl_" + layer.chosen.kind] || L.t.tl_drawings) + " • "
-                                 + layer.mmss(layer.chosen.a) + "–" + layer.mmss(layer.chosen.b) : ""
+            text: !layer.chosen ? "" : (L.t["tl_" + layer.chosen.kind] || L.t.tl_drawings)
+                  + (layer.still ? "" : " • " + layer.mmss(layer.chosen.a) + "–" + layer.mmss(layer.chosen.b))
             color: Theme.inkOnAcc; font.family: Theme.uiFont; font.pixelSize: 11; font.weight: Font.DemiBold
         }
     }
@@ -246,9 +251,11 @@ Item {
                : layer.chosen.kind === "arrow" ? [[0, 0], [1, 1]] : []
         Rectangle {
             objectName: "noteHandle" + index
-            readonly property var n: layer.chosen
-            x: n.pts[modelData[0]][0] * layer.width - 4
-            y: n.pts[modelData[1]][1] * layer.height - 4
+            // not `layer` (the Item's own «layer» group here, as in the logo's delegate)
+            readonly property Item home: parent
+            readonly property var n: home.chosen
+            x: n.pts[modelData[0]][0] * home.width - 4
+            y: n.pts[modelData[1]][1] * home.height - 4
             width: 8; height: 8
             color: "#FFFFFF"; border.color: Qt.rgba(0, 0, 0, .85)
             MouseArea {
@@ -256,11 +263,11 @@ Item {
                 cursorShape: Qt.CrossCursor
                 onPositionChanged: (m) => {
                     if (!pressed) return
-                    var p = layer.clamp(mapToItem(layer, m.x, m.y)), n = parent.n
+                    var p = home.clamp(mapToItem(home, m.x, m.y)), n = parent.n
                     var pts = n.pts.map(q => [q[0], q[1]])
                     pts[modelData[0]][0] = p[0]
                     pts[modelData[1]][1] = p[1]
-                    editor.setNotePoints(n.i, pts)
+                    ed.setNotePoints(n.i, pts)
                 }
             }
         }
@@ -273,14 +280,14 @@ Item {
         visible: note >= 0
         width: Math.max(implicitWidth, layer.textPx)
         font: fm.font
-        color: note >= 0 ? editor.notes[note].color : "white"
+        color: note >= 0 ? ed.notes[note].color : "white"
         selectByMouse: true
         function start(i) {
             if (i < 0) return
             note = i
-            var p = layer.px(editor.notes[i].pts[0])
+            var p = layer.px(ed.notes[i].pts[0])
             x = p.x; y = p.y
-            text = editor.notes[i].text
+            text = ed.notes[i].text
             forceActiveFocus()
             selectAll()
             canvas.requestPaint()
@@ -290,12 +297,12 @@ Item {
             var i = note
             note = -1
             focus = false
-            editor.setNoteText(i, text)
+            ed.setNoteText(i, text)
         }
         onAccepted: finish()
         onActiveFocusChanged: if (!activeFocus) finish()
         Keys.onEscapePressed: {
-            text = editor.notes[note].text      // back to what it was; an empty new text goes away
+            text = ed.notes[note].text      // back to what it was; an empty new text goes away
             finish()
         }
         Rectangle {

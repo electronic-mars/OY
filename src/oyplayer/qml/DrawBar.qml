@@ -3,9 +3,12 @@ import QtQuick
 // The editor's drawing tools, a card over the picture (Argon's v1, 01.11): pick and move,
 // pencil, rectangle, arrow, text, a logo; five inks (a logo chosen: its opacity); three lines;
 // the turn and the frame; undo, redo; delete the chosen drawing. The tool in use is pressed in,
-// its sign in the accent.
+// its sign in the accent. Over a still screenshot (`still`, `ed` = shot) the same card without the
+// turn and the frame, which belong to a video.
 Rectangle {
     id: bar
+    property QtObject ed: editor
+    property bool still: false
     property string tool: "select"
     property color ink: "#F26A21"
     property real size: 1
@@ -13,7 +16,7 @@ Rectangle {
     signal inkPicked(color ink)
     signal sizePicked(real size)
     signal imageRequested()
-    readonly property var chosen: editor.noteSel >= 0 && editor.noteSel < editor.notes.length ? editor.notes[editor.noteSel] : null
+    readonly property var chosen: ed.noteSel >= 0 && ed.noteSel < ed.notes.length ? ed.notes[ed.noteSel] : null
     readonly property bool logo: chosen !== null && chosen.kind === "image"
 
     readonly property bool full: Theme.tier === 2
@@ -58,7 +61,7 @@ Rectangle {
                 Rectangle { anchors.centerIn: parent; width: 14; height: 14; radius: 7; color: "white"; opacity: modelData
                             border.color: Theme.lineHi }
                 MouseArea { id: opArea; anchors.fill: parent; hoverEnabled: true
-                            onClicked: editor.setNoteOpacity(editor.noteSel, modelData) }
+                            onClicked: bar.ed.setNoteOpacity(bar.ed.noteSel, modelData) }
                 Tip { text: L.t.opacity_tip.arg(Math.round(modelData * 100)); shown: opArea.containsMouse }
             }
         }
@@ -96,11 +99,11 @@ Rectangle {
                 Tip { text: L.t.draw_size.arg(L.t.draw_sizes.split("|")[index]); shown: sizeArea.containsMouse }
             }
         }
-        Sep {}
+        Sep { visible: !bar.still }
         // the whole edit: a quarter turn, and the frame (as it is, or 16:9 for a phone video)
-        Key { objectName: "drawRotate"; glyph: Theme.icRotateRight; latched: editor.rotation !== 0
+        Key { objectName: "drawRotate"; visible: !bar.still; glyph: Theme.icRotateRight; latched: editor.rotation !== 0
               tip: L.t.draw_rotate; onClicked: actions.run("edit_rotate") }
-        Key { id: frameKey; objectName: "drawFrame"; glyph: "rectangle-horizontal"; latched: editor.frame !== "asis"
+        Key { id: frameKey; objectName: "drawFrame"; visible: !bar.still; glyph: "rectangle-horizontal"; latched: editor.frame !== "asis"
               held: frameMenu.visible
               tip: L.t.draw_frame
               onClicked: {
@@ -110,10 +113,12 @@ Rectangle {
               }
               PanelMenu { id: frameMenu; objectName: "frameMenu"; y: parent.height + 8; margins: 8 } }
         Sep {}
-        Key { objectName: "drawUndo"; glyph: "undo-2"; tip: L.t.draw_undo; onClicked: actions.run("edit_undo") }
-        Key { objectName: "drawRedo"; glyph: "redo-2"; tip: L.t.draw_redo; onClicked: actions.run("edit_redo") }
+        Key { objectName: "drawUndo"; glyph: "undo-2"; tip: L.t.draw_undo
+              onClicked: bar.still ? bar.ed.undo() : actions.run("edit_undo") }
+        Key { objectName: "drawRedo"; glyph: "redo-2"; tip: L.t.draw_redo
+              onClicked: bar.still ? bar.ed.redo() : actions.run("edit_redo") }
         Key { objectName: "drawDelete"; glyph: Theme.icDelete; tip: L.t.draw_delete
-              enabled: editor.noteSel >= 0
-              onClicked: actions.run("remove_selected") }
+              enabled: bar.ed.noteSel >= 0
+              onClicked: bar.still ? bar.ed.removeSelected() : actions.run("remove_selected") }
     }
 }

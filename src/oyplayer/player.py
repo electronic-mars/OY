@@ -111,6 +111,7 @@ class Player(QObject):
     positionChanged = Signal()
     _fromMpv = Signal(str, object)
     osdMessage = Signal(str)
+    shotSaved = Signal(str)       # a screenshot's file: its name and «Open the folder» for 3 s
     eofReached = Signal()                   # keep-open=yes: the file ended, mpv holds the last frame
     loadFailed = Signal(str, str)           # a file did not open: path, why in words
     _endFile = Signal(str)                  # mpv's end-file with reason error, onto the GUI thread
@@ -510,17 +511,24 @@ class Player(QObject):
         self.setVolume(self._state["volume"] + delta)
         self.osdMessage.emit(tr("osd_volume", round(self.mpv.volume)))
 
+    def shot_name(self):
+        """A screenshot's name without the extension: the file and the time of the frame."""
+        pos = self._state["position"] or 0.0
+        return f"{Path(self._state['path']).stem}_{int(pos // 3600):02d}-{int(pos % 3600 // 60):02d}-{pos % 60:06.3f}"
+
     @Slot(str)
     def screenshot(self, folder):
         if not self._state["path"]:
             return
         Path(folder).mkdir(parents=True, exist_ok=True)
-        stem = Path(self._state["path"]).stem
-        pos = self._state["position"] or 0.0
-        target = Path(folder) / f"{stem}_{int(pos // 3600):02d}-{int(pos % 3600 // 60):02d}-{pos % 60:06.3f}.png"
+        target = Path(folder) / f"{self.shot_name()}.png"
         self.mpv.screenshot_to_file(str(target), "video")
         log.info("screenshot %s", target)
-        self.osdMessage.emit(tr("osd_shot_saved"))
+        self.shotSaved.emit(str(target))
+
+    def grab_frame(self, target):
+        """The frame shown, without the OSD, into a PNG file (the screenshot editor's picture)."""
+        self.mpv.command("screenshot-to-file", str(target), "video")
 
     @Slot()
     def screenshotToClipboard(self):

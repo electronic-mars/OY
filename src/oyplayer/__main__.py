@@ -85,6 +85,12 @@ class AppInfo(QObject):
         Path(self.screenshotDir).mkdir(parents=True, exist_ok=True)
         os.startfile(self.screenshotDir)
 
+    @Slot(str)
+    def revealFile(self, path):
+        """The folder in Explorer with this file chosen in it."""
+        import subprocess
+        subprocess.Popen(f'explorer /select,"{os.path.normpath(path)}"')
+
     @Property(str, constant=True)
     def version(self):
         return __version__
@@ -204,6 +210,8 @@ def main(argv):
     actions = Actions(player, playlist, editor, autoskip, radio)
     preview = Preview()
     info = AppInfo(settings, selftest=selftest)
+    from .shot import ShotEditor
+    shot = ShotEditor(player, settings, lambda: info.screenshotDir)
     server = instance.Server()
     from .updater import Updater
     updater = Updater(busy=lambda: editor.exporting)   # quitting would cut a save short
@@ -251,6 +259,7 @@ def main(argv):
     ctx.setContextProperty("app", info)
     ctx.setContextProperty("settings", settings)
     ctx.setContextProperty("editor", editor)
+    ctx.setContextProperty("shot", shot)
     ctx.setContextProperty("preview", preview)
     ctx.setContextProperty("autoskip", autoskip)
     ctx.setContextProperty("history", player.history)
@@ -271,6 +280,9 @@ def main(argv):
         log.error("QML failed to load")
         return 1
     win = engine.rootObjects()[0]
+    engine.load(QUrl.fromLocalFile(str(PKG / "qml" / "ShotWindow.qml")))
+    shot_win = engine.rootObjects()[1]
+    shot_win.setProperty("main", win)
     actions.window = win
     win.installEventFilter(actions)
     place_on_screen(app, win, os.environ.get("OY_SCREEN") or ("3" if info.selftest else ""))
@@ -313,7 +325,7 @@ def main(argv):
         from .selftest import SelfTest
         test = SelfTest(app, win, player, playlist, actions, argv[2:], settings, editor, preview,
                         m8=dict(autoskip=autoskip, radio=radio, scheduler=scheduler, tray=tray,
-                                keys=keys, info=info, history=player.history, updater=updater, skins=skins))
+                                keys=keys, info=info, history=player.history, updater=updater, skins=skins, shot=shot, shot_win=shot_win))
         underlay.ready.connect(test.start)
     elif files:
         underlay.ready.connect(lambda: playlist.add(files, True))

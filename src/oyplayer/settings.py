@@ -60,6 +60,7 @@ DEFAULTS = {
     "jumpStep": 30,
     "keys": {},                  # overrides: key -> action ("" removes a default)
     # Screenshots
+    "shotMode": "file",          # the screenshot key: file (saved at once) | edit (the screenshot editor)
     "shotFormat": "png",         # png | jpg
     "shotQuality": 90,
     "shotDir": "",               # "" = Pictures\\OY Player

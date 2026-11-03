@@ -135,13 +135,23 @@ def view_graph(rotate, frame, w, h, tag=""):
 def render_note(n, size, box, path):
     """One drawing as a transparent PNG the size of the saved frame; box = (x, y, w, h) of
     the picture inside it (a smaller file in the join is centred, with bars around it)."""
+    from PySide6.QtGui import QImage, QPainter
+
+    img = QImage(size[0], size[1], QImage.Format_ARGB32_Premultiplied)
+    img.fill(Qt.transparent)
+    p = QPainter(img)
+    paint_note(p, n, box)
+    p.end()
+    img.save(str(path))
+
+
+def paint_note(p, n, box):
+    """One drawing painted by p over the picture at box = (x, y, w, h)."""
     from PySide6.QtCore import QPointF, QRectF
     from PySide6.QtGui import QColor, QFont, QFontMetricsF, QImage, QPainter, QPainterPath, QPen, QPolygonF
 
     x0, y0, pw, ph = box
-    img = QImage(size[0], size[1], QImage.Format_ARGB32_Premultiplied)
-    img.fill(Qt.transparent)
-    p = QPainter(img)
+    p.save()
     p.setRenderHint(QPainter.Antialiasing)
     color, lw = QColor(n["color"]), max(1.5, STROKE * ph * n.get("size", 1.0))
     pen = QPen(color, lw, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
@@ -171,8 +181,7 @@ def render_note(n, size, box, path):
         p.setPen(Qt.NoPen)
         p.setBrush(color)
         p.drawPolygon(QPolygonF([tip, left, right]))
-    p.end()
-    img.save(str(path))
+    p.restore()
 
 
 def outline(color):
