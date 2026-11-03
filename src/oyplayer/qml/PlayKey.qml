@@ -2,9 +2,9 @@ import QtQuick
 import QtQuick.Shapes
 
 // The play key, the same in every skin (the owner chose it from Gemini's variants): graphite lit
-// from behind. A knob (the owner's variant C2 of 02.11): a graphite bezel, a lit ring in the accent
-// in its groove, brightest at the top, and a dome inside it, lighter in the middle and darker at
-// the edge; a faint warm halo round it, the sign in the accent. A click plays or pauses, the right
+// from behind. A knob (the owner's variant E of 03.11): a graphite bezel, a lit ring in the accent
+// in its groove, brightest at the top, and inside it the face of Master Audio Switcher's knob; a
+// faint warm halo round it, the sign in the accent. A click plays or pauses, the right
 // button opens a file.
 Item {
     id: pk
@@ -19,7 +19,9 @@ Item {
     readonly property string sign: playing ? Theme.icPause : Theme.icPlay
     // the triangle stands by its weight, as the owner's sample does (02.11): its box's middle 13%
     // of its width right of the key's; the icon already draws it 1/24 of its size right
-    readonly property real signShift: playing ? 0 : Math.round((width + 2 * grow) * .36) / 24
+    // the sign at the mock's size (19 of 46 px for the bare triangle; the icon's own stroke adds a
+    // little, hence .373)
+    readonly property real signShift: playing ? 0 : Math.round((width + 2 * grow) * .373) / 24
     width: Theme.keyPlay
     height: Theme.keyPlay
 
@@ -27,22 +29,31 @@ Item {
     Accessible.name: pk.name
     Accessible.onPressAction: pk.clicked()
 
-    // a disc filled from the middle (a touch above it, where the light falls) to the edge
+    // a disc filled from a point (by default its middle, a touch above with `lift`) out to its edge;
+    // `cx`, `cy` place that point as a share of the box, `reach` is how far the colours run (in
+    // radii), `middle` an optional colour at `mid` of the way
     component Disc: Shape {
         id: disc
         property real radius
         property color inner
         property color outer
+        property color middle: "transparent"
+        property real mid: -1
         property real lift: 0
+        property real cx: .5
+        property real cy: .5
+        property real reach: 1
         anchors.fill: parent
         preferredRendererType: Shape.CurveRenderer
         ShapePath {
             strokeColor: "transparent"
             fillGradient: RadialGradient {
-                centerX: disc.width / 2; centerY: disc.height / 2 - disc.lift
+                centerX: disc.width * disc.cx; centerY: disc.height * disc.cy - disc.lift
                 focalX: centerX; focalY: centerY
-                centerRadius: disc.radius
+                centerRadius: disc.radius * disc.reach
                 GradientStop { position: 0; color: disc.inner }
+                // without a middle colour this stop sits on the last one and changes nothing
+                GradientStop { position: disc.mid >= 0 ? disc.mid : 1; color: disc.mid >= 0 ? disc.middle : disc.outer }
                 GradientStop { position: 1; color: disc.outer }
             }
             PathAngleArc { centerX: disc.width / 2; centerY: disc.height / 2
@@ -84,22 +95,35 @@ Item {
                     }
                 }
             }
-            // the face: a dome, lighter where the light falls, darker at its edge
+            // the face: the inner disc of Master Audio Switcher's knob (its app.css, the owner's
+            // variant E of 03.11), lighter up and to the left of the middle, darker to every edge,
+            // a hairline of light along its top inside
             Item {
                 id: face
                 anchors.fill: parent; anchors.margins: 5 * pk.u
                 readonly property real r: width / 2
-                Disc { radius: face.r; lift: face.r * .24
-                       inner: Theme.light ? (rimArea.containsMouse ? "#FFFFFF" : Theme.capTop)
-                                          : (rimArea.containsMouse ? "#4D525B" : "#444850")
-                       outer: Theme.light ? Theme.capBot : "#141619" }
-                // the barest glow behind the sign
-                Disc { radius: face.r * .6
-                       inner: Theme.accA(rimArea.containsMouse ? .09 : .05)
+                Disc { radius: face.r; cx: .36; cy: .26; reach: 2.4; mid: .48
+                       inner: Theme.light ? (rimArea.containsMouse ? "#F2F0EA" : "#E4E1DA")
+                                          : (rimArea.containsMouse ? "#3A4048" : "#33383F")
+                       middle: Theme.light ? "#D2CFC7" : "#23272C"
+                       outer: Theme.light ? "#BEBAB1" : "#191C20" }
+                Shape {
+                    anchors.fill: parent
+                    preferredRendererType: Shape.CurveRenderer
+                    ShapePath {
+                        fillColor: "transparent"; strokeWidth: Math.max(1, .6 * pk.u)
+                        strokeColor: Qt.rgba(1, 1, 1, Theme.light ? .5 : .13); capStyle: ShapePath.RoundCap
+                        PathAngleArc { centerX: face.r; centerY: face.r; radiusX: face.r - .6 * pk.u; radiusY: radiusX
+                                       startAngle: 215; sweepAngle: 110 }
+                    }
+                }
+                // what is left of the sign's glow (halved, 03.11): a breath of the accent behind it
+                Disc { radius: face.r * .55
+                       inner: Theme.accA(rimArea.containsMouse ? .10 : .06)
                        outer: Theme.accA(0) }
             }
             Icon { objectName: "sign"; anchors.centerIn: parent; anchors.horizontalCenterOffset: pk.signShift
-                   name: pk.sign; solid: true; size: Math.round(art.width * .36); color: Theme.accText }
+                   name: pk.sign; solid: true; size: Math.round(art.width * .373); color: Theme.accText }
         }
     }
     MouseArea { id: rimArea; anchors.fill: art; hoverEnabled: true; acceptedButtons: Qt.LeftButton | Qt.RightButton

@@ -6,7 +6,8 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 ## [Unreleased]
 
 ### Changed
-- The play key is a knob: a graphite bezel with a lit ring in the accent, a dome inside it and the sign set by its weight; it is drawn a little larger, without the dark ring the panel's groove had round it. The colour dial in Settings shows the same key.
+- The play key is a knob: a graphite bezel with a lit ring in the accent, inside it the face of a volume knob, lighter up and to the left and darker to its edge, and a larger sign set by its weight; it is drawn a little larger, without the dark ring the panel's groove had round it. The colour dial in Settings shows the same key.
+- The player's icon is the new play key on its graphite body, drawn for each size.
 - The editor's title bar shows only the EDITING label: the scheduler and on-top keys are the player's alone again, and the editor closes from a key at the right end of the edit strip (or Esc).
 
 ## [0.13.0] - 2026-11-01
