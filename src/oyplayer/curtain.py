@@ -14,6 +14,8 @@ from ctypes import wintypes as W
 
 from PySide6.QtCore import QObject, QTimer, Slot
 
+from .log import log
+
 u32 = ctypes.WinDLL("user32")
 g32 = ctypes.WinDLL("gdi32")
 dwmapi = ctypes.WinDLL("dwmapi")
@@ -73,15 +75,23 @@ IID_ITaskbarList2 = "{602D4995-B13A-429b-A66E-1935E44F4317}"
 
 
 def _taskbar():
-    """ITaskbarList2, through which the shell is told at once that a window is going full screen."""
+    """ITaskbarList2, through which the shell is told at once that a window is going full screen.
+    (None, None) when the shell gives none: the bars then step back by themselves, a frame later."""
     ole = ctypes.OleDLL("ole32")
     clsid, iid = (ctypes.c_byte * 16)(), (ctypes.c_byte * 16)()
-    ole.CLSIDFromString(CLSID_TaskbarList, clsid)
-    ole.CLSIDFromString(IID_ITaskbarList2, iid)
     tb = ctypes.c_void_p()
-    ole.CoCreateInstance(clsid, None, 1, iid, ctypes.byref(tb))    # CLSCTX_INPROC_SERVER
+    try:
+        ole.CLSIDFromString(CLSID_TaskbarList, clsid)
+        ole.CLSIDFromString(IID_ITaskbarList2, iid)
+        ole.CoCreateInstance(clsid, None, 1, iid, ctypes.byref(tb))    # CLSCTX_INPROC_SERVER
+    except OSError as e:
+        log.warning("curtain: no ITaskbarList2: %s", e)
+        return None, None
     vtbl = ctypes.cast(tb, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p)))[0]
-    ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p)(vtbl[3])(tb)              # HrInit
+    hr = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p)(vtbl[3])(tb)         # HrInit
+    if hr < 0:      # an object the shell did not set up must not be called
+        log.warning("curtain: ITaskbarList2.HrInit failed: 0x%08X", hr & 0xFFFFFFFF)
+        return None, None
     return tb, ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, W.HWND, W.BOOL)(vtbl[8])  # MarkFullscreenWindow
 u32.RegisterClassW(ctypes.byref(WNDCLASSW(0, _proc, 0, 0, None, None, None, None, None, "OYCurtain")))
 
@@ -101,6 +111,9 @@ class Curtain(QObject):
     def cover(self, full):
         """Freeze the window's monitor as it is now; down once the window, `full` screen or not,
         has drawn a frame at its new size and Windows has composed it."""
+        # first: whatever fails below, the still screen goes with the new frame or the limit
+        self.full = full
+        self.limit.start()
         mi = MONITORINFO(ctypes.sizeof(MONITORINFO))
         u32.GetMonitorInfoW(u32.MonitorFromWindow(int(self.win.winId()), MONITOR_DEFAULTTONEAREST),
                             ctypes.byref(mi))
@@ -121,9 +134,12 @@ class Curtain(QObject):
         # The taskbar and other always-on-top bars (a dock) stand over a full-screen window until
         # the shell has noticed it: told now, they step back under the curtain (every composed
         # frame of display 3: the dock over the picture for a frame, 4 of 5 entries)
-        self.mark(self.taskbar, int(self.win.winId()), full)
-        self.full = full
-        self.limit.start()
+        if self.mark:
+            try:
+                self.mark(self.taskbar, int(self.win.winId()), full)
+            except OSError as e:    # an access violation in the shell (once, in a full self-test)
+                log.warning("curtain: MarkFullscreenWindow failed, not called again: %s", e)
+                self.mark = None
 
     def _swapped(self):
         if self.full is not None and self.win.property("fullSized") == self.full:

@@ -20,7 +20,7 @@ import winreg
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from PySide6.QtCore import Q_ARG, Q_RETURN_ARG, QEvent, QMetaObject, QObject, QPoint, QPointF, QRect, Qt, QTimer
+from PySide6.QtCore import Q_ARG, Q_RETURN_ARG, QEvent, QMetaObject, QObject, QPoint, QPointF, QRect, Qt, QTimer, QUrl
 from PySide6.QtGui import QColor, QGuiApplication, QImage, QKeyEvent, QMouseEvent, QWindow
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QSystemTrayIcon
@@ -142,6 +142,63 @@ def frame_hashes(path, ss=None, n=50):
                        + ["-i", str(path), "-map", "0:v:0", "-frames:v", str(n), "-f", "framemd5", "-"],
                        capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
     return [ln.rsplit(",", 1)[1].strip() for ln in r.stdout.splitlines() if ln and not ln.startswith("#")]
+
+
+class PROCESSENTRY32W(ctypes.Structure):
+    _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD), ("th32ProcessID", wintypes.DWORD),
+                ("th32DefaultHeapID", ctypes.c_size_t), ("th32ModuleID", wintypes.DWORD),
+                ("cntThreads", wintypes.DWORD), ("th32ParentProcessID", wintypes.DWORD),
+                ("pcPriClassBase", ctypes.c_long), ("dwFlags", wintypes.DWORD), ("szExeFile", ctypes.c_wchar * 260)]
+
+
+_k32 = ctypes.WinDLL("kernel32")
+_k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+_k32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+_k32.Process32FirstW.argtypes = _k32.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
+_k32.CloseHandle.argtypes = [wintypes.HANDLE]
+_k32.OpenProcess.restype = wintypes.HANDLE
+_k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+_k32.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+_u32 = ctypes.WinDLL("user32")
+_WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+_u32.EnumWindows.argtypes = [_WNDENUMPROC, wintypes.LPARAM]
+_u32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+_u32.IsWindowVisible.argtypes = [wintypes.HWND]
+_u32.SendMessageTimeoutW.restype = ctypes.c_ssize_t
+_u32.SendMessageTimeoutW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM, wintypes.UINT,
+                                     wintypes.UINT, ctypes.POINTER(ctypes.c_size_t)]
+WM_QUERYENDSESSION, WM_ENDSESSION, ENDSESSION_LOGOFF, SMTO_ABORTIFHUNG = 0x0011, 0x0016, 0x80000000, 0x0002
+
+
+def windows_of(pid):
+    """The top-level windows of a process and of its children, as [(hwnd, pid)]: the venv's
+    python.exe is a launcher, the player is its child."""
+    pids, entry = {pid}, PROCESSENTRY32W(ctypes.sizeof(PROCESSENTRY32W))
+    snap = _k32.CreateToolhelp32Snapshot(0x2, 0)       # TH32CS_SNAPPROCESS
+    ok = _k32.Process32FirstW(snap, ctypes.byref(entry))
+    while ok:
+        if entry.th32ParentProcessID == pid:
+            pids.add(entry.th32ProcessID)
+        ok = _k32.Process32NextW(snap, ctypes.byref(entry))
+    _k32.CloseHandle(snap)
+    found = []
+
+    def each(hwnd, _):
+        owner = wintypes.DWORD()
+        _u32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        if owner.value in pids:
+            found.append((hwnd, owner.value))
+        return True
+    _u32.EnumWindows(_WNDENUMPROC(each), 0)
+    return found
+
+
+def terminate(pid):
+    """At once, as Windows does once a session's end has been answered."""
+    h = _k32.OpenProcess(0x0001, False, pid)          # PROCESS_TERMINATE
+    if h:
+        _k32.TerminateProcess(h, 1)
+        _k32.CloseHandle(h)
 
 
 class SelfTest(QObject):
@@ -428,6 +485,7 @@ class SelfTest(QObject):
             "upd": self.upd_steps,     # the update from the release page
             "skins": self.skins_steps,     # sealed skins: each drawn in the real window, the default back
             "shot": self.shot_steps,     # the screenshot: its name and folder; the screenshot editor
+            "rv1": self.rv1_steps,     # code review 1 (05.11): the curtain, network folders, an edit's border, one player, the session's end
         }
         # tests\next-run-focus (used up like next-run-exe): the quick part and only the blocks it
         # names; empty, the quick part alone. Without it, everything.
@@ -4736,3 +4794,169 @@ class SelfTest(QObject):
         up.installer, up._found = None, None
         up._set(state="idle", detail="", percent=0, offered="")
         self.key("Esc")
+
+    # ---- code review 1 (05.11.2026): the curtain when the shell's call fails, network folders,
+    # an edit's border on its keyframe, files opened together from Explorer, the session's end
+    def rv1_steps(self):
+        long_mkv = str(Path(self.media).parent / "test_long.mkv")
+
+        def toggle_fs():
+            QMetaObject.invokeMethod(self.win, "toggleFullscreen")
+        return [
+            (0, self.s_rv1_paths),
+            # the shell's call that sends the bars back fails (an access violation, seen once in
+            # a full run): the still screen goes all the same, the window goes full screen
+            (0, self.s_rv1_mark_fails), (0, toggle_fs), (900, self.s_rv1_mark_failed),
+            (0, toggle_fs), (900, self.s_rv1_windowed),
+            # a border's keyframe comes after the person has gone on from it
+            (0, lambda: self.pl.add([long_mkv], True)), (1800, lambda: setattr(self.p.mpv, "pause", True)),
+            (0, lambda: self.p.seek(60.0)), (800, self.s_rv1_border), (800, self.s_rv1_border_near),
+            (800, self.s_rv1_border_done),
+            # three files opened together in Explorer: a process each, at the same moment
+            (0, self.s_rv1_many),
+            (500, self.until(lambda: sum(p.poll() is not None for p in self.many_procs) >= 2, 25, 200)),
+            (0, self.until(lambda: len(self.rv1_list()) >= 3, 10, 200)), (0, self.s_rv1_many_chk),
+            # Windows ends the session: a player resumed at 30 s plays a few seconds, is told, and
+            # is ended as soon as WM_ENDSESSION has returned
+            (0, self.s_rv1_end_start),
+            (500, self.until(lambda: any(_u32.IsWindowVisible(h) for h, _ in windows_of(self.end_proc.pid)), 25, 200)),
+            (4000, self.s_rv1_end_session), (0, self.until(lambda: self.end_proc.poll() is not None, 10, 100)),
+            (0, self.s_rv1_end_kept),
+        ]
+
+    def rv1_player(self, files, home):
+        """Another player, as a person starts it: its own settings folder (silent, no update
+        check), on display 3."""
+        if getattr(sys, "frozen", False):
+            cmd, cwd = [sys.executable], None
+        else:
+            cmd, cwd = [sys.executable, "-m", "oyplayer"], str(Path(__file__).resolve().parents[1])
+        return subprocess.Popen(cmd + files, cwd=cwd, env=dict(os.environ, OY_HOME=str(home), OY_SCREEN="3"),
+                                creationflags=subprocess.CREATE_NO_WINDOW)
+
+    def rv1_home(self, name, **settings):
+        home = self.out / name
+        home.mkdir(exist_ok=True)
+        (home / "settings.json").write_text(json.dumps(dict(mpvOptions="ao=null", updateCheck=False, **settings)),
+                                            encoding="utf-8")
+        return home
+
+    def s_rv1_paths(self):
+        from .playlist import to_path
+        want = {QUrl.fromLocalFile("\\\\nas\\films\\a b#1.mkv").toString(): "\\\\nas\\films\\a b#1.mkv",
+                "file://nas/films/cut.mp4": "\\\\nas\\films\\cut.mp4",
+                "file:///D:/%D0%90%20b.mkv": "D:\\\u0410 b.mkv"}
+        got = {u: to_path(u) for u in want}
+        self.check("an address from a dialog keeps a network folder's server: file://nas/films/x is \\\\nas\\films\\x "
+                   "(subtitles, a sound track, saving the edit and the list)",
+                   got == want, " | ".join(f"{u} -> {p}" for u, p in got.items()))
+
+    def s_rv1_mark_fails(self):
+        c = self.m8["curtain"]
+        self.mark_kept = c.mark
+
+        def fails(*_a):
+            raise OSError("exception: access violation reading 0x0000000000000008")
+        c.mark = fails
+
+    def s_rv1_mark_failed(self):
+        c = self.m8["curtain"]
+        up = bool(_u32.IsWindowVisible(c.hwnd))
+        self.check("the shell's call for the bars fails (an access violation): the still screen goes all the same, "
+                   "the window is full screen, and the call is not made again",
+                   not up and self.win.property("fs") is True and c.mark is None,
+                   f"curtain up={up} fs={self.win.property('fs')} call kept={c.mark is not None}")
+        c.mark = self.mark_kept
+
+    def s_rv1_windowed(self):
+        up = bool(_u32.IsWindowVisible(self.m8["curtain"].hwnd))
+        self.check("and back to the window, the curtain down", self.win.property("fs") is False and not up,
+                   f"fs={self.win.property('fs')} curtain up={up}")
+
+    def s_rv1_border(self):
+        """Without loss a border moves to the keyframe before it once that is read. Read late,
+        after the person went on to 60 s, and for a border undone meanwhile."""
+        ed, path = self.ed, self.p.path
+        self.rv1_kept = (ed.frags, ed.codec)
+        ed.setCodec("copy")
+        ed.frags = [{"path": path, "start": 25.0, "end": 80.0, "aid": 0}]
+        ed._snaps[(path, 25.0)] = False
+        ed._snaps[(path, 33.0)] = False          # undone: no piece starts there any more
+        self.rv1_lossless = ed.lossless
+        ed._snap_border(path, 25.0, 20.0)
+        ed._snap_border(path, 33.0, 30.0)
+
+    def s_rv1_border_near(self):
+        ed, path, pos = self.ed, self.p.path, self.st("position")
+        self.check("an edit's border read late moves to its keyframe, the cursor stays where the person went on to; "
+                   "a border undone before its keyframe came moves nothing",
+                   self.rv1_lossless and ed.frags[0]["start"] == 20.0 and abs(pos - 60.0) < 1.5,
+                   f"lossless={self.rv1_lossless} start={ed.frags[0]['start']} position={pos:.1f} (was 60.0)")
+        # near the border (0.2 s): the cursor goes with it, as before
+        ed.frags = [{"path": path, "start": 60.2, "end": 80.0, "aid": 0}]
+        ed._snaps[(path, 60.2)] = False
+        ed._snap_border(path, 60.2, 50.0)
+
+    def s_rv1_border_done(self):
+        pos = self.st("position")
+        self.check("a border read while the cursor is at it takes the cursor to the keyframe",
+                   self.ed.frags[0]["start"] == 50.0 and abs(pos - 50.0) < 1.5,
+                   f"start={self.ed.frags[0]['start']} position={pos:.1f}")
+        self.ed.frags, codec = self.rv1_kept
+        self.ed.setCodec(codec)
+
+    def rv1_list(self):
+        try:
+            data = json.loads((self.out / "home_many" / "playlist.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return []
+        return [i["path"] for i in data.get("items", [])]
+
+    def s_rv1_many(self):
+        home = self.rv1_home("home_many")
+        self.many = []
+        for k in (2, 1, 3):          # Explorer starts them in no order of its own
+            f = self.out / f"many {k}.mp4"
+            shutil.copy(self.media, f)
+            self.many.append(str(f.resolve()))
+        self.many_procs = [self.rv1_player([f], home) for f in self.many]
+
+    def s_rv1_many_chk(self):
+        from .playlist import natural_key
+        alive = [p for p in self.many_procs if p.poll() is None]
+        got, want = self.rv1_list(), sorted(self.many, key=lambda p: natural_key(Path(p).name))
+        self.check("three files opened together (a process each, at the same moment): one player, "
+                   "all three in its list in the folder's order",
+                   len(alive) == 1 and got == want,
+                   f"players={len(alive)} list={[Path(p).name for p in got]}")
+        for p in alive:
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(p.pid)], capture_output=True,
+                           creationflags=subprocess.CREATE_NO_WINDOW)
+
+    def s_rv1_end_start(self):
+        self.end_clip = str((Path(self.media).parent / "test_long.mkv").resolve())
+        self.end_home = self.rv1_home("home_end", resume=True)
+        (self.end_home / "positions.json").write_text(json.dumps({self.end_clip: {"pos": 30.0}}), encoding="utf-8")
+        self.end_proc = self.rv1_player([self.end_clip], self.end_home)
+
+    def s_rv1_end_session(self):
+        # as Windows does: every top-level window is asked, then told; once told, the process
+        # may be ended at any moment, here at once
+        wins, res = windows_of(self.end_proc.pid), ctypes.c_size_t()
+        for msg, wp in ((WM_QUERYENDSESSION, 0), (WM_ENDSESSION, 1)):
+            for h, _pid in wins:
+                _u32.SendMessageTimeoutW(h, msg, wp, ENDSESSION_LOGOFF, SMTO_ABORTIFHUNG, 5000, ctypes.byref(res))
+        for pid in {pid for _h, pid in wins}:
+            terminate(pid)
+        self.end_wins = len(wins)
+
+    def s_rv1_end_kept(self):
+        try:
+            kept = json.loads((self.end_home / "positions.json").read_text(encoding="utf-8"))
+            pos = kept.get(self.end_clip, {}).get("pos")
+        except (OSError, ValueError):
+            pos = None
+        self.check("Windows ends the session (a restart, a sign-out) and ends the player as soon as it has answered: "
+                   "where the film was is kept",
+                   self.end_wins > 0 and pos is not None and pos > 31.0,
+                   f"windows told={self.end_wins} kept={pos} (resumed at 30.0)")

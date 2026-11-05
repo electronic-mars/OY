@@ -5,6 +5,13 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 
 ## [Unreleased]
 
+### Fixed
+- Going full screen could leave a still picture of the whole monitor over everything until the player was closed, when Windows' call that sends the taskbar back failed. The still picture now always goes, within half a second at most.
+- Files in a network folder (\\server\share): subtitles and a sound track loaded from a file there, an edit saved there and a list saved there now go to that folder; the server's name was dropped from the way. A picture from a network folder shows over the video.
+- Restarting or shutting down Windows, or signing out, while a film plays keeps where it was for the next start, with the list and the volume. It was lost when Windows ended the player before it had written them.
+- Several files opened together from Explorer open in one player, all of them in its list in their folder's order, instead of a player each.
+- Editing without loss: when a border moves to its keyframe, the cursor goes with it only while it is still at the border. It no longer jumps back after the person has moved on, or after an undo.
+
 ## [0.14.1] - 2026-11-03
 
 ### Fixed

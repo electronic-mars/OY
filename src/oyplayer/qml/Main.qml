@@ -427,7 +427,9 @@ Window {
     Connections {
         target: editor
         function onSaveRequested() {
-            var url = "file:///" + editor.suggestedPath().replace(/\\/g, "/")
+            // a network folder's \\server\share is file://server/share
+            var p = editor.suggestedPath().replace(/\\/g, "/")
+            var url = (p.startsWith("//") ? "file:" : "file:///") + p
             editSaveDialog.currentFolder = url.substring(0, url.lastIndexOf("/"))
             editSaveDialog.selectedFile = url
             editSaveDialog.open()

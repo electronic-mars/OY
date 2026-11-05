@@ -671,15 +671,19 @@ class Editor(NoteEdits):
         also_end = self._snaps.pop((path, t), None)
         if also_end is None or not self.lossless or kf >= t - 0.01:
             return
+        moved = False
         for f in self.frags:
             if f["path"] != path:
                 continue
             if abs(f["start"] - t) < 1e-6:
-                f["start"] = kf
+                f["start"], moved = kf, True
             elif also_end and abs(f["end"] - t) < 1e-6:
-                f["end"] = kf
+                f["end"], moved = kf, True
         self._kfs[(path, kf)] = kf
-        if self.p.path == path:
+        if not moved:       # the border is gone before its keyframe came (undone, taken out)
+            return
+        # the cursor goes with the border, unless the person has gone on from it (0.5 s)
+        if self.p.path == path and abs(float(self.p.position or 0.0) - t) < 0.5:
             self.p.seek(kf)
         self.p.osdMessage.emit(tr("osd_on_keyframe", fmt(kf)))
         log.info("edit border %s %.2f -> keyframe %.2f", Path(path).name, t, kf)

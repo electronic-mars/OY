@@ -3,6 +3,7 @@ import locale
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 
 PKG = Path(__file__).resolve().parent
@@ -157,8 +158,12 @@ def main(argv):
     files = [] if selftest else [a if "://" in a else str(Path(a).resolve()) for a in argv[1:]]
     # One player: a second start hands its files to the first one and leaves, before
     # it opens the log the first one is writing
-    if not selftest and settings["singleInstance"] and instance.send(files):
+    first = instance.first()
+    if not selftest and settings["singleInstance"] and instance.send(files, first):
         os._exit(0)
+    # listening at once, not after mpv and the window: the other files opened with this one
+    # (a process each) find it
+    server = instance.Server()
     log_path = setup()
     locale.setlocale(locale.LC_NUMERIC, "C")   # mpv parses numbers with the C locale
     app.setWindowIcon(QIcon(str(PKG / "oyplayer.ico")))
@@ -170,7 +175,7 @@ def main(argv):
     from .hotkeys import MediaKeys
     from .snap import SnapKey
     from .player import Player
-    from .playlist import Playlist
+    from .playlist import Playlist, natural_key
     from .preview import Preview
     from .radio import Radio
     from .scheduler import Scheduler
@@ -215,7 +220,6 @@ def main(argv):
     info = AppInfo(settings, selftest=selftest)
     from .shot import ShotEditor
     shot = ShotEditor(player, settings, lambda: info.screenshotDir)
-    server = instance.Server()
     from .updater import Updater
     updater = Updater(busy=lambda: editor.exporting)   # quitting would cut a save short
     from .skins import Skins
@@ -310,12 +314,37 @@ def main(argv):
     # "close the player" from the scheduler or the setting "onListEnd"
     scheduler.closeRequested.connect(win.close)
 
-    def handed_over(more):
+    # Files opened together with this player's own: several chosen in Explorer start a process
+    # each, at the same moment, and those made before this window was up hand theirs over a
+    # little later. They make one list with these, in their folder's order, the first playing.
+    together = {"files": list(files), "at": None}      # at: when this player opened its own
+
+    def open_together(again):
+        batch = together["files"]
+        if again:       # the first of them already play: they go in once more, as one
+            for row in reversed(range(playlist.count)):
+                if playlist.items[row]["path"] in batch:
+                    playlist.remove(row)
+        if batch:
+            playlist.add(sorted(batch, key=lambda p: natural_key(Path(p).name)), True)
+
+    def handed_over(more, started):
+        if together["at"] is None or started < together["at"]:
+            new = [f for f in more if f not in together["files"]]
+            together["files"] += new
+            if new and together["at"] is not None:
+                open_together(True)
+            return
         # a second start: its files play here, and the window comes forward (from the tray too)
         if more:
             playlist.add(more, True)
         tray.showWindow()
     server.filesReceived.connect(handed_over)
+
+    def first_files():
+        together["at"] = time.time()
+        open_together(False)
+    underlay.ready.connect(first_files)
     if not selftest:
         updater.readyToInstall.connect(app.quit)     # the installer starts on the way out
     log.info("started, log %s", log_path)
@@ -329,10 +358,19 @@ def main(argv):
         from .selftest import SelfTest
         test = SelfTest(app, win, player, playlist, actions, argv[2:], settings, editor, preview,
                         m8=dict(autoskip=autoskip, radio=radio, scheduler=scheduler, tray=tray,
-                                keys=keys, info=info, history=player.history, updater=updater, skins=skins, shot=shot, shot_win=shot_win))
+                                keys=keys, info=info, history=player.history, updater=updater, skins=skins, shot=shot, shot_win=shot_win,
+                                curtain=curtain))
         underlay.ready.connect(test.start)
-    elif files:
-        underlay.ready.connect(lambda: playlist.add(files, True))
+
+    def save_state():
+        # On every way out. When Windows ends the session (a restart, a sign-out, the
+        # scheduler's shutdown) Qt says so while it handles WM_ENDSESSION, and Windows may end
+        # the process as soon as that returns: long before app.exec() would.
+        playlist.flush()          # a change from the last half second is still on its timer
+        player.saveSession()      # where the current file was left, its tracks and volume
+        settings.set("volume", round(player.general_volume))
+        flush_writes()            # settings, positions, history and the list are on the disk
+    app.aboutToQuit.connect(save_state)
 
     code = app.exec()
     tray.icon.hide()          # leaving through os._exit would leave the icon behind
@@ -340,10 +378,6 @@ def main(argv):
     radio.stopRecording()     # the recording ends with what has arrived
     editor.shutdown()         # an unfinished save is stopped and its partial file removed
     preview.shutdown()
-    playlist.flush()          # a change from the last half second is still on its timer
-    player.saveSession()      # where the current file was left, its tracks and volume
-    settings.set("volume", round(player.general_volume))
-    flush_writes()            # settings, positions, history and the list are on the disk
     # mpv's render context must be freed (on the render thread, as the window goes)
     # before mpv itself is terminated.
     del engine

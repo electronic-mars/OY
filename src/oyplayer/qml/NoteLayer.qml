@@ -88,7 +88,8 @@ Item {
             // a corner dragged past the opposite one turns the box over: kept the right way round
             x: Math.min(pts[0][0], pts[1][0]) * area.width; y: Math.min(pts[0][1], pts[1][1]) * area.height
             width: Math.abs(pts[1][0] - pts[0][0]) * area.width; height: Math.abs(pts[1][1] - pts[0][1]) * area.height
-            source: "file:///" + modelData.src.replace(/\\/g, "/")
+            // a picture from a network folder: \\server\share (or //server/share) is file://server/share
+            source: (modelData.src.replace(/\\/g, "/").startsWith("//") ? "file:" : "file:///") + modelData.src.replace(/\\/g, "/")
             opacity: (modelData.opacity === undefined ? 1 : modelData.opacity) * (modelData.ghost ? .35 : 1)
             fillMode: Image.Stretch
             smooth: true; mipmap: true

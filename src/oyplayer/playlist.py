@@ -14,7 +14,6 @@ import shutil
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from urllib.parse import unquote, urlparse
 
 from PySide6.QtCore import (Property, QAbstractListModel, QModelIndex, Qt, QTimer, QUrl, Signal,
                             Slot)
@@ -33,12 +32,12 @@ _FFMPEG = shutil.which("ffmpeg")
 
 
 def to_path(url):
-    """QUrl or text; file:///D:/x.mkv -> D:\\x.mkv; anything else (http, etc.) stays as it is."""
+    """QUrl or text; file:///D:/x.mkv -> D:\\x.mkv, file://nas/films/x.mkv -> \\\\nas\\films\\x.mkv
+    (a network folder: the host is the server); anything else (http, etc.) stays as it is."""
+    if isinstance(url, str) and url.startswith("file:"):
+        url = QUrl(url)
     if isinstance(url, QUrl):
         return str(Path(url.toLocalFile())) if url.isLocalFile() else url.toString()
-    if url.startswith("file:"):
-        p = unquote(urlparse(url).path)
-        return str(Path(p.lstrip("/") if re.match(r"^/[A-Za-z]:", p) else p))
     return url
 
 
