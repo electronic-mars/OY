@@ -807,9 +807,11 @@ class Player(QObject):
                             + ("  " + tr("kbps", f"{abr / 1000:.0f}") if abr else "")))
         return "\n".join(lines)
 
-    @Slot(float, float, float)
-    def setVideoMargins(self, top, bottom, right):
-        """Fractions of the window the picture must keep clear (title bar, panel, playlist)."""
+    @Slot(float, float, float, float)
+    def setVideoMargins(self, top, bottom, right, left):
+        """Fractions of the window the picture must keep clear (title bar, panel, playlist: on
+        the left in a right-to-left language)."""
         self.mpv["video-margin-ratio-top"] = top
         self.mpv["video-margin-ratio-bottom"] = bottom
         self.mpv["video-margin-ratio-right"] = right
+        self.mpv["video-margin-ratio-left"] = left

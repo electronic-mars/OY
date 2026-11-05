@@ -21,11 +21,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from PySide6.QtCore import Q_ARG, Q_RETURN_ARG, QEvent, QMetaObject, QObject, QPoint, QPointF, QRect, Qt, QTimer, QUrl
-from PySide6.QtGui import QColor, QGuiApplication, QImage, QKeyEvent, QMouseEvent, QWindow
+from PySide6.QtGui import QColor, QGuiApplication, QImage, QKeyEvent, QMouseEvent, QWheelEvent, QWindow
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QSystemTrayIcon
 
-from .i18n import EN, UK
+from .i18n import EN, LANGUAGES, UK, forms, lang, plural_table, words
 from .log import log
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
@@ -317,7 +317,7 @@ class SelfTest(QObject):
         # the quick part, run every time: the strings, open, play, pause, seek, keys, full screen
         smoke = [
             (0, self.s_lang_open), (700, self.s_lang_page), (500, self.s_lang_uk), (500, self.s_lang_uk_chk),
-            (500, self.s_lang_en_chk),
+            (500, self.s_lang_ar), (600, self.s_lang_ar_chk), (1900, self.s_lang_ja_chk), (600, self.s_lang_en_chk),
             (0, self.s_open), (2500, self.s_playing), (0, self.s_click_pause),
             (400, self.s_paused), (0, self.s_key_space), (400, self.s_resumed),
             (0, self.s_seek), (600, self.s_seeked), (0, self.s_keys_misc), (500, self.s_misc_done),
@@ -536,6 +536,34 @@ class SelfTest(QObject):
         self.check("English and Ukrainian have the same strings with the same placeholders",
                    EN.keys() == UK.keys() and not pairs,
                    f"only EN={sorted(EN.keys() - UK.keys())} only UK={sorted(UK.keys() - EN.keys())} placeholders={pairs}")
+        # the others are made by tools/translate.py: a string added to English and not yet
+        # translated shows here, with the command that fills it in
+        bad = {}
+        for code in LANGUAGES:
+            if code in ("en", "uk"):
+                continue
+            path = Path(__file__).with_name("lang") / f"{code}.json"
+            if not path.is_file():
+                bad[code] = "no file"
+                continue
+            d = json.loads(path.read_text("utf-8"))
+            parts = {k: forms(code) if k.endswith("_forms") else EN[k].count("|") + 1 for k in EN}
+            faults = {"missing": [k for k in EN if k not in d], "extra": [k for k in d if k not in EN],
+                      "placeholders": [k for k in EN if k in d and sorted(re.findall(r"%\d", d[k])) != sorted(re.findall(r"%\d", EN[k]))],
+                      "forms": [k for k in EN if k in d and d[k].count("|") + 1 != parts[k]],
+                      "empty": [k for k in d if not str(d[k]).strip()]}
+            faults = {f: ks for f, ks in faults.items() if ks}
+            if faults:
+                bad[code] = faults
+        self.check(f"each of the other {len(LANGUAGES) - 2} languages has every string, with the same placeholders "
+                   "and its own number of plural forms (else: python tools/translate.py)", not bad, f"{bad}")
+        # the plural rules where they are easy to get wrong: Ukrainian (the old formula), Arabic, Polish
+        self.check("a count takes its language's plural form",
+                   [plural_table("uk")[n] for n in (1, 2, 5, 11, 21, 22, 25, 112)] == [0, 1, 2, 2, 0, 1, 2, 2]
+                   and [plural_table("ar")[n] for n in (0, 1, 2, 3, 11, 100, 102, 111)] == [0, 1, 2, 3, 4, 5, 5, 4]
+                   and [plural_table("pl")[n] for n in (1, 2, 5, 12, 22, 25)] == [0, 1, 2, 2, 1, 2]
+                   and forms("ja") == 1 and forms("ar") == 6,
+                   f"uk={plural_table('uk')[:30]} ar={plural_table('ar')[:15]}")
         self.click("keySettings")
 
     def s_lang_page(self):
@@ -546,9 +574,20 @@ class SelfTest(QObject):
         self.pick_lang("Українська")
 
     def pick_lang(self, name):
-        """The language list opened, then its row clicked, as a person picks a language."""
+        """The language list opened, scrolled to the row, the row clicked: as a person picks a
+        language from forty. The wheel itself is checked once (s_lang_ar)."""
         self.click_item(self.find_item("setLang"))
-        QTimer.singleShot(250, lambda: self.click_item(self.find_text(name)))
+        QTimer.singleShot(250, lambda: self._pick_row(name))
+
+    def _pick_row(self, name):
+        menu = self.win.findChild(QObject, "choiceMenu")
+        flick, row = menu.property("contentItem"), self.find_text(name)
+        top = flick.mapToScene(QPointF(0, 0)).y()
+        y = row.mapToScene(QPointF(0, row.height() / 2)).y()
+        if not top + 4 < y < top + flick.height() - 4:
+            flick.setProperty("contentY", max(0.0, min(flick.property("contentY") + y - top - flick.height() / 2,
+                                                       flick.property("contentHeight") - flick.height())))
+        QTimer.singleShot(150, lambda: self.click_item(row))
 
     def _lang_shows(self, d):
         tray = [a.text() for a in self.m8["tray"].menu.actions() if a.text()]
@@ -566,12 +605,79 @@ class SelfTest(QObject):
                    self.settings["lang"] == "uk" and all(shows.values()) and self.lang_en[0] is not None
                    and self.lang_en[1].startswith(EN["t_play"]), f"lang={self.settings['lang']} {shows} en={self.lang_en}")
         self.shot("00_lang_uk")
+
+    def s_lang_ar(self):
+        self.lang_nav_x = self.find_item("nav1").mapToScene(QPointF(0, 0)).x()
+        self.pick_lang(LANGUAGES["ar"][0])
+
+    def s_lang_ar_chk(self):
+        """Arabic, written right to left: the window mirrored, the words in their own font."""
+        ar, title = words("ar"), self.find_text(words("ar")["s_caps"])
+        menu = self.win.findChild(QObject, "choiceMenu")
+        nav_x = self.find_item("nav1").mapToScene(QPointF(0, 0)).x()
+        self.check("a click on «Arabic»: the window in Arabic, mirrored (the section list moved to the other side), "
+                   "in Segoe UI",
+                   self.settings["lang"] == "ar" and lang.rtl and title is not None
+                   and title.property("font").family() == "Segoe UI" and nav_x > self.lang_nav_x + 200
+                   and self.find_item("keyPlay").property("tip").startswith(ar["t_play"]),
+                   f"lang={self.settings['lang']} rtl={lang.rtl} title={title is not None} "
+                   f"font={title.property('font').family() if title else None} nav x {self.lang_nav_x:.0f} -> {nav_x:.0f}")
+        h = menu.property("height") if menu else 0
+        self.check("the long language list fits in the window and scrolls", menu is not None and 0 < h < self.win.height(),
+                   f"menu height={h} window={self.win.height()}")
+        self.show_list(True)
+        side = self.win.property("sideW") / self.win.width()
+        left, right = self.p.mpv["video-margin-ratio-left"], self.p.mpv["video-margin-ratio-right"]
+        self.check("mirrored, the picture keeps clear of the playlist on the left",
+                   side > 0 and abs(left - side) < 0.01 and right == 0,
+                   f"list {side:.3f} of the width, margins left {left:.3f} right {right:.3f}")
+        self.shot("00_lang_ar")           # a frame: the switches' knobs start their move to the other side
+        QTimer.singleShot(400, self._lang_knob)
+
+    def _lang_knob(self):
+        switch = self.find_item("setUpdate")
+        knob = switch.childItems()[0].childItems()[0]
+        self.check("mirrored, a switch that is on has its knob on the left, off on the right",
+                   (knob.x() < switch.width() / 2) == switch.property("checked"),
+                   f"checked={switch.property('checked')} knob x={knob.x()} of {switch.width()}")
+        self.shot("00_lang_ar")
+        # the list opens on the chosen row, near its end: a turn of the wheel moves it
+        self.click_item(self.find_item("setLang"))
+        QTimer.singleShot(250, self._lang_wheel)
+
+    def _lang_wheel(self):
+        flick = self.win.findChild(QObject, "choiceMenu").property("contentItem")
+        self.lang_wheeled = [flick.property("contentY")]
+        at = flick.mapToScene(QPointF(flick.width() / 2, flick.height() / 2))
+        turn = QPoint(0, 120 if self.lang_wheeled[0] > 0 else -120)
+        wheel = QWheelEvent(at, QPointF(self.win.mapToGlobal(at.toPoint())), QPoint(), turn,
+                            Qt.NoButton, Qt.NoModifier, Qt.NoScrollPhase, False)
+        # a Flickable drops a wheel older than the last press; QTest's clicks keep their own clock
+        wheel.setTimestamp(2 ** 31)
+        QGuiApplication.sendEvent(self.win, wheel)
+        QTimer.singleShot(500, lambda: (self.lang_wheeled.append(flick.property("contentY")),
+                                        self._pick_row(LANGUAGES["ja"][0])))
+
+    def s_lang_ja_chk(self):
+        title = self.find_text(words("ja")["s_caps"])
+        self.check("a click on «Japanese», at the far end of the list (after a turn of the wheel): the window "
+                   "in Yu Gothic UI, back from right to left",
+                   self.settings["lang"] == "ja" and not lang.rtl and title is not None
+                   and title.property("font").family() == "Yu Gothic UI"
+                   and self.lang_wheeled[0] > 0 and self.lang_wheeled[1] != self.lang_wheeled[0],
+                   f"lang={self.settings['lang']} rtl={lang.rtl} font={title.property('font').family() if title else None} "
+                   f"the list's top (opened on Arabic, then a turn of the wheel) {self.lang_wheeled}")
+        self.shot("00_lang_ja")
         self.pick_lang("English")
 
     def s_lang_en_chk(self):
         shows = self._lang_shows(EN)
-        self.check("a click on «English» brings the English texts back",
-                   self.settings["lang"] == "en" and all(shows.values()), f"lang={self.settings['lang']} {shows}")
+        side = self.win.property("sideW") / self.win.width()
+        left, right = self.p.mpv["video-margin-ratio-left"], self.p.mpv["video-margin-ratio-right"]
+        self.check("a click on «English» brings the English texts back, the playlist on the right",
+                   self.settings["lang"] == "en" and all(shows.values()) and left == 0 and abs(right - side) < 0.01,
+                   f"lang={self.settings['lang']} {shows} list {side:.3f}, margins left {left:.3f} right {right:.3f}")
+        self.show_list(False)
         self.shot("00_lang_en")
         panel = self.win.findChild(QObject, "settingsPanel")
         panel.setProperty("section", 0)      # the settings steps later start from the first section
@@ -4005,7 +4111,7 @@ class SelfTest(QObject):
         names = [i.get("text") for i in items] if items else []
         self.check("the language is a list: Windows' own and each language by its own name",
                    menu is not None and menu.property("visible") is True and "English" in names and "Українська" in names
-                   and len(names) == 3, f"menu={menu is not None and menu.property('visible')} names={names}")
+                   and len(names) == len(LANGUAGES) + 1, f"menu={menu is not None and menu.property('visible')} names={names}")
         self.shot("fb4_04_lang_list")
         if menu is not None:
             QMetaObject.invokeMethod(menu, "close")      # Esc would close the settings as well

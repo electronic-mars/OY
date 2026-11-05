@@ -6,7 +6,7 @@ are done on the spot (aspect, tracks, colour) live in menus and keys, not here.
 """
 import json
 
-from PySide6.QtCore import Property, QObject, Signal, Slot
+from PySide6.QtCore import Property, QLocale, QObject, Signal, Slot
 
 from .i18n import system_lang
 from .log import home, log, write_later
@@ -22,7 +22,7 @@ DEFAULTS = {
     "onListEnd": "stop",         # stop | close | sleep | shutdown
     "hwdec": True,
     # Window
-    "lang": "",                  # "" = as Windows shows (Ukrainian or English) | en | uk
+    "lang": "",                  # "" = the closest to Windows' own | a code of lang/languages.json
     "theme": "system",           # system | dark | light
     "accent": "#F26A21",         # the one colour of the panel (orange); yellow is the editor's
     "skin": "default",           # default (Theme.qml itself) | a sealed skin's id (skins.py)
@@ -42,7 +42,7 @@ DEFAULTS = {
     "audioDevice": "auto",
     "maxVolume": 200,
     "channels": "auto-safe",     # auto-safe | stereo | 5.1 | 7.1
-    "audioLang": "eng,en",       # until set, follows the interface language (TRACK_LANGS)
+    "audioLang": "eng,en",       # until set, follows the interface language (track_langs)
     "passthrough": False,
     # Subtitles
     "subsOn": True,
@@ -69,8 +69,15 @@ DEFAULTS = {
     # Advanced: raw mpv options, one "name=value" per line
     "mpvOptions": "",
 }
-# the audio and subtitle languages looked for first, by the interface language
-TRACK_LANGS = {"en": "eng,en", "uk": "ukr,uk,eng,en"}
+
+
+def track_langs(code):
+    """The audio and subtitle tracks to prefer for an interface language: its ISO 639-2 and
+    639-1 codes as files tag tracks (ukr,uk), then English."""
+    lang, kind = QLocale(code).language(), QLocale.LanguageCodeType
+    names = [QLocale.languageToCode(lang, t) for t in (kind.ISO639Part2B, kind.ISO639Part2T, kind.ISO639Part1)]
+    names = [n for n in names if n] or [code.split("-")[0]]
+    return ",".join(dict.fromkeys(names + ["eng", "en"]))
 
 
 class Settings(QObject):
@@ -86,7 +93,7 @@ class Settings(QObject):
             self._v.update({k: v for k, v in saved.items() if k in DEFAULTS})
         except (OSError, ValueError):
             pass
-        langs = TRACK_LANGS.get(self._v["lang"] or system_lang(), DEFAULTS["audioLang"])
+        langs = track_langs(self._v["lang"] or system_lang())
         for k in ("audioLang", "subLang"):
             if k not in saved:
                 self._v[k] = langs

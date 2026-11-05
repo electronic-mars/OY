@@ -139,7 +139,7 @@ Item {
                     y: zone || index % 2 === 1 ? 6 : 44
                     text: modelData[1]
                     color: zone ? Theme.oklch(Theme.light ? .7 : .85, .17, 88) : tuned ? Theme.tx : Theme.tx3
-                    font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: 1.6
+                    font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: 1.6 * Theme.track
                     font.weight: tuned ? Font.DemiBold : Font.Normal
                 }
             }

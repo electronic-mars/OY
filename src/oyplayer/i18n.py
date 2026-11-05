@@ -1,13 +1,17 @@
-"""The interface's words in English and Ukrainian.
+"""The interface's words: English and Ukrainian here, the other languages in lang/.
 
 One dictionary per language with the same keys. Python takes a string with tr(key, args…);
 QML reads L.t.key (L.qml), which is this object's `t` copied into the QML engine once per
 change of language: a binding reads plain JS and never calls Python for a word, so a switch
 of language redraws every text at once without the GUI thread waiting on Python.
-Placeholders are %1, %2… in both, as QML's String.arg() has them. Plural forms are
-"one|other" in English and "one|few|many" in Ukrainian (L.plural).
+Placeholders are %1, %2… in all, as QML's String.arg() has them. Plural forms are one
+string: "one|other" in English, "one|few|many" in Ukrainian, as many as the language's rule
+(PLURAL) gives; L.plural picks one from the table plural_table() makes for the language in use.
 """
 import ctypes
+import json
+import unicodedata
+from pathlib import Path
 
 from PySide6.QtCore import Property, QObject, Signal
 
@@ -301,10 +305,10 @@ EN = {
     "s_history_h": "Files you watched for longer than 30 seconds. It is in the playlist, the “History” tab (Ctrl+H)",
     "c_decoding": "DECODING", "s_hwdec": "The graphics card decodes video",
     "s_hwdec_h": "Less load on the processor and quieter fans. Turn it off only if the video shows artefacts",
-    "c_view": "LANGUAGE", "c_window": "WINDOW", "c_look": "THEME AND COLOUR", "c_skins": "SKIN", "s_lang": "Language", "lang_en": "English", "lang_uk": "Ukrainian",
+    "c_view": "LANGUAGE", "c_window": "WINDOW", "c_look": "THEME AND COLOUR", "c_skins": "SKIN", "s_lang": "Language",
     "s_theme": "Theme", "o_dark": "Dark", "o_light": "Light",
     "s_skin_h": "How the panel is drawn: its colours, the wells under the keys, the volume, the LCD. A click on a skin puts it on",
-    "skin_locked": "paid",
+    "skin_locked": "paid", "skin_default": "Default",
     "s_accent": "Main colour",
     "s_accent_h": "Drag the needle along the scale, as when tuning a radio: the “Play” key, the scales and "
                   "the marks change colour at once. Yellow belongs to editing",
@@ -676,10 +680,10 @@ UK = {
     "c_decoding": "ДЕКОДУВАННЯ", "s_hwdec": "Відеокарта декодує відео",
     "s_hwdec_h": "Менше навантаження на процесор і тихіші вентилятори. Вимикайте, лише якщо відео "
                  "показується з артефактами",
-    "c_view": "МОВА", "c_window": "ВІКНО", "c_look": "ТЕМА І КОЛІР", "c_skins": "СКІН", "s_lang": "Мова", "lang_en": "English", "lang_uk": "Українська",
+    "c_view": "МОВА", "c_window": "ВІКНО", "c_look": "ТЕМА І КОЛІР", "c_skins": "СКІН", "s_lang": "Мова",
     "s_theme": "Тема", "o_dark": "Темна", "o_light": "Світла",
     "s_skin_h": "Як намальована панель: кольори, підкладки під клавішами, гучність, табло. Клацніть скін, щоб його вдягнути",
-    "skin_locked": "платний",
+    "skin_locked": "платний", "skin_default": "Стандартний",
     "s_accent": "Головний колір",
     "s_accent_h": "Тягніть стрілку по шкалі, як шукають радіостанцію: клавіша «Відтворити», шкали й позначки "
                   "змінюють колір одразу. Жовтий зайнятий монтажем",
@@ -755,14 +759,96 @@ UK = {
     "d_rec": "Папка для записів радіо",
 }
 
+LANG_DIR = Path(__file__).with_name("lang")
+# Every language of the interface, code: [its own name, as a person looking for theirs reads
+# it; its name in English, for the translator (tools/translate.py); its plural rule (PLURAL)].
+# The codes are Windows 11's display languages, regional twins folded into one (match()).
+LANGUAGES = json.loads((LANG_DIR / "languages.json").read_text("utf-8"))
+# English and Ukrainian are written here; the others are lang/<code>.json, made from English by
+# tools/translate.py and read the first time the language is chosen (words())
 LANGS = {"en": EN, "uk": UK}
-# each language by its own name, as a person looking for theirs reads it
-NATIVE = {"en": "English", "uk": "Українська"}
+# Written right to left: the window is mirrored (L.rtl), the timeline and the transport are not
+RTL = {"ar", "fa", "he"}
+# Scripts Segoe UI Variable does not draw get the Windows font made for them. Left to Qt's
+# fallback, Chinese came out in the Japanese MS UI Gothic, Arabic and Thai in Tahoma.
+FONT = {"ar": "Segoe UI", "fa": "Segoe UI", "he": "Segoe UI", "hi": "Nirmala UI", "th": "Leelawadee UI",
+        "ja": "Yu Gothic UI", "zh-Hans": "Microsoft YaHei UI", "zh-Hant": "Microsoft JhengHei UI",
+        "ko": "Malgun Gothic"}
+
+
+def _slavic(n):
+    d, h = n % 10, n % 100
+    return 0 if d == 1 and h != 11 else 1 if 2 <= d <= 4 and not 12 <= h <= 14 else 2
+
+
+# A plural rule: the index of the form a count takes in a "form|form|..." string (CLDR, whole
+# numbers). The number of forms is the number of indexes the rule gives.
+PLURAL = {
+    "other": lambda n: 0,                                   # ja, zh, ko, vi, th, id: one form
+    "one": lambda n: 0 if n == 1 else 1,                    # 1 | the rest
+    "one01": lambda n: 0 if n <= 1 else 1,                  # 0 and 1 | the rest (fr, pt-BR, hi, fa)
+    "slavic": _slavic,                                      # uk, hr, sr: 1, 21 | 2-4, 22-24 | 5-20, 25
+    "pl": lambda n: 0 if n == 1 else 1 if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14 else 2,
+    "cs": lambda n: 0 if n == 1 else 1 if 2 <= n <= 4 else 2,
+    "sl": lambda n: (3, 0, 1, 2, 2)[n % 100] if n % 100 < 5 else 3,
+    "lt": lambda n: 2 if 11 <= n % 100 <= 19 else 0 if n % 10 == 1 else 1 if n % 10 else 2,
+    "lv": lambda n: 0 if n % 10 == 0 or 11 <= n % 100 <= 19 else 1 if n % 10 == 1 else 2,
+    "ro": lambda n: 0 if n == 1 else 1 if n == 0 or 1 <= n % 100 <= 19 else 2,
+    "ar": lambda n: n if n <= 2 else 3 if 3 <= n % 100 <= 10 else 4 if n % 100 >= 11 else 5,
+    "he": lambda n: 0 if n == 1 else 1 if n == 2 else 2,
+}
+
+
+def plural_table(code):
+    """The form index of 0-199 (L.plural): past 199 a count takes the form of 100 + n % 100."""
+    rule = PLURAL[LANGUAGES[code][2]]
+    return [rule(n) for n in range(200)]
+
+
+def forms(code):
+    """How many plural forms the language writes."""
+    return max(plural_table(code)) + 1
+
+
+def words(code):
+    """The language's dictionary; a word its file does not have yet stays English."""
+    if code not in LANGS:
+        LANGS[code] = {**EN, **json.loads((LANG_DIR / f"{code}.json").read_text("utf-8"))}
+    return LANGS[code]
+
+
+def match(tag):
+    """The interface language for a Windows language tag (de-DE, zh-Hans-CN, sr-Latn-RS,
+    es-MX), or None: the longest known prefix, the regional twins folded."""
+    parts = tag.split("-")
+    if parts[0] == "es" and len(parts) > 1 and parts[1] != "ES":
+        return "es-419"         # the Spanish of Mexico and the rest of the Americas
+    twins = {"zh-CN": "zh-Hans", "zh-SG": "zh-Hans", "zh-TW": "zh-Hant", "zh-HK": "zh-Hant",
+             "zh-MO": "zh-Hant", "zh": "zh-Hans", "pt": "pt-PT", "sr": "sr-Latn", "no": "nb",
+             "nn": "nb", "prs": "fa"}
+    for n in range(len(parts), 0, -1):
+        code = "-".join(parts[:n])
+        if code in LANGUAGES:
+            return code
+        if code in twins:
+            return twins[code]
+    return None
 
 
 def system_lang():
-    """Ukrainian when Windows shows Ukrainian (primary language 0x22), English otherwise."""
-    return "uk" if ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0x3FF == 0x22 else "en"
+    """The first of Windows' display languages, in the person's own order, the player speaks."""
+    k32 = ctypes.windll.kernel32
+    count, size = ctypes.c_ulong(), ctypes.c_ulong()
+    k32.GetUserPreferredUILanguages(8, ctypes.byref(count), None, ctypes.byref(size))  # MUI_LANGUAGE_NAME
+    buf = ctypes.create_unicode_buffer(size.value)
+    k32.GetUserPreferredUILanguages(8, ctypes.byref(count), buf, ctypes.byref(size))
+    return next(filter(None, map(match, buf[:size.value].split("\0"))), "en")
+
+
+def _sort_key(code):
+    """Latin, Greek and Cyrillic names alphabetically without their accents, other scripts after."""
+    name = unicodedata.normalize("NFKD", LANGUAGES[code][0])
+    return "".join(c for c in name if not unicodedata.combining(c)).casefold()
 
 
 class Lang(QObject):
@@ -775,8 +861,9 @@ class Lang(QObject):
         self.code = "en"
 
     def set(self, code):
-        code = code if code in LANGS else system_lang()
+        code = code if code in LANGUAGES else system_lang()
         if code != self.code:
+            words(code)
             self.code = code
             self.changed.emit()
 
@@ -788,9 +875,21 @@ class Lang(QObject):
     def t(self):
         return LANGS[self.code]
 
+    @Property(bool, notify=changed)
+    def rtl(self):
+        return self.code in RTL
+
+    @Property(str, notify=changed)
+    def font(self):
+        return FONT.get(self.code, "")
+
+    @Property("QVariantList", notify=changed)
+    def plurals(self):
+        return plural_table(self.code)
+
     @Property("QVariantList", constant=True)
     def languages(self):
-        return [{"code": c, "name": NATIVE[c]} for c in LANGS]
+        return [{"code": c, "name": LANGUAGES[c][0]} for c in sorted(LANGUAGES, key=_sort_key)]
 
 
 lang = Lang()

@@ -14,6 +14,10 @@ Window {
     title: player.title !== "" ? player.title + " — OY Player" : "OY Player"
     flags: Qt.Window | Qt.FramelessWindowHint | (onTop ? Qt.WindowStaysOnTopHint : 0)
            | (app.selftest ? Qt.WindowDoesNotAcceptFocus | Qt.WindowTransparentForInput : 0)
+    // a language written right to left mirrors the window; the timeline and the keys under it keep
+    // the tape's left-to-right order (Timeline, the panel's rows)
+    LayoutMirroring.enabled: L.rtl
+    LayoutMirroring.childrenInherit: true
 
     // setting "onTop": never | always | while a file plays
     readonly property bool onTop: settings.values.onTop === "always"
@@ -95,9 +99,11 @@ Window {
     readonly property int sideW: playlistShown && !bare ? playlistW : 0
 
     function updateMargins() {
-        if (bare) player.setVideoMargins(0, 0, 0)
-        else player.setVideoMargins(titleH / height, panelH / height, sideW / width)
+        if (bare) player.setVideoMargins(0, 0, 0, 0)
+        else if (L.rtl) player.setVideoMargins(titleH / height, panelH / height, 0, sideW / width)
+        else player.setVideoMargins(titleH / height, panelH / height, sideW / width, 0)
     }
+    Connections { target: L; function onRtlChanged() { win.updateMargins() } }   // the list goes to the left
     onHeightChanged: { fsCheck(); updateMargins() }
     onWidthChanged: { fsCheck(); updateMargins() }
     onSideWChanged: updateMargins()
@@ -315,7 +321,7 @@ Window {
             at = Qt.point(videoArea.x + videoArea.width / 2 - 125, videoArea.y + videoArea.height / 2 - 120)
         if (at) {
             menu.parent = Overlay.overlay
-            menu.x = Math.max(8, Math.min(at.x, win.width - menu.rowWidth - 20))
+            menu.x = Math.max(8, Math.min(at.x, win.width - menu.fitWidth - 20))
             menu.y = Math.max(8, Math.min(at.y, win.height - menu.implicitHeight - 8))
         } else {
             menu.parent = key
@@ -608,7 +614,7 @@ Window {
             anchors.horizontalCenter: parent.horizontalCenter
             text: radio.streaming ? (radio.recording ? L.t.radio_rec_caps : L.t.radio_caps) : L.t.sound_caps
             color: radio.recording ? Theme.accText : Theme.tx3
-            font.family: Theme.uiFont; font.pixelSize: 12; font.letterSpacing: 6
+            font.family: Theme.uiFont; font.pixelSize: 12; font.letterSpacing: 6 * Theme.track
         }
         Text {
             width: parent.width
@@ -723,7 +729,7 @@ Window {
                 width: badgeText.implicitWidth + 14; height: 18; radius: 4
                 color: Theme.acc
                 Text { id: badgeText; x: 7; anchors.verticalCenter: parent.verticalCenter; text: L.t.edit_caps; color: Theme.inkOnAcc
-                       font.family: Theme.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 1.4 }
+                       font.family: Theme.uiFont; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 1.4 * Theme.track }
             }
         }
         Text {
@@ -818,6 +824,9 @@ Window {
     Rectangle {
         id: panel
         objectName: "panel"
+        // the timeline and the keys run left to right in every language, as the time does
+        LayoutMirroring.enabled: false
+        LayoutMirroring.childrenInherit: true
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         height: win.panelH
         opacity: win.chromeShown ? 1 : 0

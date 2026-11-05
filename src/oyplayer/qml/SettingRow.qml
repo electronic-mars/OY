@@ -17,7 +17,7 @@ Item {
 
     Column {
         id: texts
-        x: 16; y: 11
+        anchors.left: parent.left; anchors.leftMargin: 16; y: 11
         width: row.below ? row.width - 32 : row.width - 32 - slot.childrenRect.width - 16
         spacing: 3
         Text { width: parent.width; text: row.title; color: Theme.tx; wrapMode: Text.Wrap
@@ -27,7 +27,7 @@ Item {
     }
     Item {
         id: slot
-        x: row.below ? 16 : row.width - 16 - childrenRect.width
+        x: row.below || LayoutMirroring.enabled ? 16 : row.width - 16 - childrenRect.width   // at the words' far end
         y: row.below ? texts.y + texts.height + 10 : (row.height - childrenRect.height) / 2
         width: row.below ? row.width - 32 : childrenRect.width
         height: childrenRect.height

@@ -10,7 +10,8 @@ Popup {
     background: FloatCard {}
 
     component Caption: Text {
-        color: Theme.tx3; font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: 2
+        width: 300                       // the side it reads from, left or right
+        color: Theme.tx3; font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: 2 * Theme.track
     }
     // `prop`, not `name`: inside the Rail a bare `name` is the Rail's own (what a screen reader
     // calls it, empty), so the sliders read and set nothing
@@ -19,10 +20,10 @@ Popup {
         property string prop
         property string label
         width: 300; height: 26
-        Text { anchors.verticalCenter: parent.verticalCenter; text: label; width: 96
+        Text { anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; text: label; width: 96
                color: Theme.tx2; font.family: Theme.uiFont; font.pixelSize: 12 }
         Rail {
-            x: 100; width: 156; height: 16; grooveHeight: 5
+            anchors.left: parent.left; anchors.leftMargin: 100; width: 156; height: 16; grooveHeight: 5
             anchors.verticalCenter: parent.verticalCenter
             objectName: "rail_" + row.prop
             name: row.label
@@ -77,12 +78,12 @@ Popup {
         Item {
             width: 300; height: 30
             Rail {
-                width: 170; height: 16; grooveHeight: 5
+                anchors.left: parent.left; width: 170; height: 16; grooveHeight: 5
                 anchors.verticalCenter: parent.verticalCenter
                 value: (player.zoom + 1) / 3                  // log2 −1…2 = 50…400 %
                 onMoved: (v) => player.setZoom(v * 3 - 1)
             }
-            Text { x: 178; anchors.verticalCenter: parent.verticalCenter
+            Text { anchors.left: parent.left; anchors.leftMargin: 178; anchors.verticalCenter: parent.verticalCenter
                    text: Math.round(Math.pow(2, player.zoom) * 100) + "%"
                    color: Theme.tx; font.family: Theme.uiFont; font.pixelSize: 11 }
             Row {

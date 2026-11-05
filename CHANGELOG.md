@@ -5,6 +5,11 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 
 ## [Unreleased]
 
+### Added
+- The interface in 39 languages, each listed by its own name: those Windows 11 is fully translated into, and Hindi, Indonesian, Vietnamese and Persian. The player starts in the one closest to Windows' own (Mexican Spanish in Latin American Spanish, Taiwanese Chinese in Traditional), and the settings' list holds the rest. Counts take each language's plural forms. Arabic, Persian and Hebrew mirror the window; the timeline and the keys under it keep running left to right. Every script is drawn in the Windows font made for it.
+- Setup speaks 25 of these languages, those Inno Setup has a translation for.
+- Audio and subtitle tracks in the interface's language come first, then English, in every language (it was Ukrainian or English only).
+
 ### Fixed
 - Going full screen could leave a still picture of the whole monitor over everything until the player was closed, when Windows' call that sends the taskbar back failed. The still picture now always goes, within half a second at most.
 - Files in a network folder (\\server\share): subtitles and a sound track loaded from a file there, an edit saved there and a list saved there now go to that folder; the server's name was dropped from the way. A picture from a network folder shows over the video.

@@ -106,7 +106,11 @@ QtObject {
     readonly property color lcdInk:   tok("lcdInk", "#1E2420")
     readonly property color lcdBezel: tok("lcdBezel", light ? "#6E685D" : "#0E1012")
 
-    readonly property string uiFont: "Segoe UI Variable Text"
+    // a language in a script Segoe UI Variable does not draw brings its own font (i18n.FONT)
+    readonly property string uiFont: L.font || "Segoe UI Variable Text"
+    // small capitals spread apart, but not letters that join (Arabic) or stack (Devanagari, Thai):
+    // the scripts with a font of their own
+    readonly property real track: L.font ? 0 : 1
     readonly property string monoFont: "IBM Plex Mono"        // fonts/, loaded by __main__
 
     // The panel's keys come in three sizes by the window's width (Main sets `tier`): the narrow

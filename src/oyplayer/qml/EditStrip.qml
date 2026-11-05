@@ -222,7 +222,7 @@ Item {
                     anchors.baseline: parent.children[0].baseline
                     text: strip.frags.length === 0 ? L.t.edit_caps : { copy: L.t.lossless_caps, h264: "H.264", h265: "H.265" }[editor.mode]
                     color: strip.frags.length > 0 && editor.lossless ? Theme.accText : Theme.tx3
-                    font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: .8
+                    font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: .8 * Theme.track
                 }
             }
             Row {
@@ -232,7 +232,7 @@ Item {
                     visible: strip.frags.length > 0 && editor.reason !== ""
                     text: editor.reason.toUpperCase()
                     color: Theme.tx3
-                    font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: .8
+                    font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: .8 * Theme.track
                 }
             }
         }
@@ -255,7 +255,7 @@ Item {
                 Text { objectName: "codecTitle"; text: L.t.es_codec.toUpperCase(); color: Theme.tx3
                        visible: strip.width >= 1000
                        anchors.verticalCenter: parent.verticalCenter
-                       font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: .8 }
+                       font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: .8 * Theme.track }
                 Segmented {
                     objectName: "editCodec"
                     width: [130, 150, 186][Theme.tier]

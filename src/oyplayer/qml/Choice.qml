@@ -34,6 +34,8 @@ Rectangle {
         hoverEnabled: true
         onClicked: {
             menu.items = ch.options.map(o => ({ text: o.text, checked: o.value === ch.value, run: () => ch.picked(o.value) }))
+            // forty languages do not fit: the list scrolls in the room down to the window's foot
+            menu.maxHeight = Math.max(170, ch.Window.height - ch.mapToItem(null, 0, menu.y).y - 2 * menu.padding - 16)
             menu.open()
         }
     }

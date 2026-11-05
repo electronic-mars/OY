@@ -8,7 +8,7 @@ A free, open-source video player for Windows 10 and 11 that also cuts the video 
 
 No ads, no telemetry, no account. Licensed under the [GNU GPL v3](LICENSE).
 
-> **Status:** preview. The interface is in English and Ukrainian (as Windows speaks, or chosen in the settings). See [CHANGELOG.md](CHANGELOG.md).
+> **Status:** preview. The interface is in 39 languages (as Windows speaks, or chosen in the settings). See [CHANGELOG.md](CHANGELOG.md).
 
 ## Download
 

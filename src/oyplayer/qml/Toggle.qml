@@ -21,7 +21,7 @@ Item {
         Behavior on color { ColorAnimation { duration: 120 } }
         Rectangle {
             width: 20; height: 20; radius: 10
-            y: 3; x: t.checked ? parent.width - width - 3 : 3
+            y: 3; x: t.checked !== LayoutMirroring.enabled ? parent.width - width - 3 : 3   // on: to the end the words run to
             color: "#F7F7F7"
             border.color: Qt.rgba(0, 0, 0, .2)
             Behavior on x { NumberAnimation { duration: 120 } }

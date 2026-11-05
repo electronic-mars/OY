@@ -6,14 +6,14 @@ import QtQuick
 QtObject {
     readonly property var t: i18n.t
     readonly property string lang: i18n.lang
+    readonly property bool rtl: i18n.rtl            // written right to left: the window mirrored
+    readonly property string font: i18n.font        // the language's own font, or "" (Theme.uiFont)
+    readonly property var plurals: i18n.plurals     // the form index of 0-199 (i18n.plural_table)
 
-    // forms "one|other" (English) or "one|few|many" (Ukrainian)
+    // forms "one|other" (English), "one|few|many" (Ukrainian): as many as the language has
     function plural(n, forms) {
         var f = forms.split("|")
-        if (f.length === 2)
-            return f[n === 1 ? 0 : 1]
-        var d = n % 10, h = n % 100
-        return f[d === 1 && h !== 11 ? 0 : d >= 2 && d <= 4 && (h < 12 || h > 14) ? 1 : 2]
+        return f[Math.min(plurals[n < 200 ? n : 100 + n % 100], f.length - 1)]
     }
     function num(x, digits) { return x.toFixed(digits).replace(".", t.dec) }
 }

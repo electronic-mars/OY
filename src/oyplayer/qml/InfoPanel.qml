@@ -33,7 +33,7 @@ Popup {
             id: head
             width: parent.width; height: 26
             Text { anchors.verticalCenter: parent.verticalCenter; text: L.t.info_caps
-                   color: Theme.tx3; font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: 2 }
+                   color: Theme.tx3; font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: 2 * Theme.track }
             Text {
                 anchors { right: parent.right; verticalCenter: parent.verticalCenter }
                 text: L.t.copy; color: copyArea.containsMouse ? Theme.accText : Theme.tx3

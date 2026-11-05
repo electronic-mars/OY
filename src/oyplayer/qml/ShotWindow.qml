@@ -15,7 +15,9 @@ Window {
     title: L.t.shot_title + " — OY Player"
     color: Theme.bg
     flags: Qt.Window | (app.selftest ? Qt.WindowDoesNotAcceptFocus | Qt.WindowTransparentForInput : 0)
-    readonly property bool popupOpen: false     // Tip asks the window whether a card is open
+    LayoutMirroring.enabled: L.rtl              // a language written right to left (as Main)
+    LayoutMirroring.childrenInherit: true
+    readonly property bool popupOpen: false    // Tip asks the window whether a card is open
     property string drawTool: "select"
     property color drawInk: "#F26A21"
     property real drawSize: 1

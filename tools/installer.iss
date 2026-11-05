@@ -41,8 +41,8 @@ RestartApplications=no
 ; Qt 6.12 runs on Windows 10 1809 and newer: on older Windows setup says so instead of
 ; installing a program that will not start
 MinVersion=10.0.17763
-; the language page only when Windows speaks neither Ukrainian nor English (then the first
-; one listed, English)
+; the language page only when Windows speaks none of the languages below (then the first one
+; listed, English)
 ShowLanguageDialog=auto
 Uninstallable=not IsPortable
 CreateUninstallRegKey=not IsPortable
@@ -53,6 +53,30 @@ ChangesAssociations=yes
 [Languages]
 Name: "en"; MessagesFile: "compiler:Default.isl"
 Name: "uk"; MessagesFile: "compiler:Languages\Ukrainian.isl"
+; the translations Inno Setup ships for the player's other languages
+Name: "ar"; MessagesFile: "compiler:Languages\Arabic.isl"
+Name: "bg"; MessagesFile: "compiler:Languages\Bulgarian.isl"
+Name: "cs"; MessagesFile: "compiler:Languages\Czech.isl"
+Name: "da"; MessagesFile: "compiler:Languages\Danish.isl"
+Name: "de"; MessagesFile: "compiler:Languages\German.isl"
+Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
+Name: "fi"; MessagesFile: "compiler:Languages\Finnish.isl"
+Name: "fr"; MessagesFile: "compiler:Languages\French.isl"
+Name: "he"; MessagesFile: "compiler:Languages\Hebrew.isl"
+Name: "hu"; MessagesFile: "compiler:Languages\Hungarian.isl"
+Name: "it"; MessagesFile: "compiler:Languages\Italian.isl"
+Name: "ja"; MessagesFile: "compiler:Languages\Japanese.isl"
+Name: "ko"; MessagesFile: "compiler:Languages\Korean.isl"
+Name: "nb"; MessagesFile: "compiler:Languages\Norwegian.isl"
+Name: "nl"; MessagesFile: "compiler:Languages\Dutch.isl"
+Name: "pl"; MessagesFile: "compiler:Languages\Polish.isl"
+Name: "pt_BR"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
+Name: "pt_PT"; MessagesFile: "compiler:Languages\Portuguese.isl"
+Name: "sk"; MessagesFile: "compiler:Languages\Slovak.isl"
+Name: "sl"; MessagesFile: "compiler:Languages\Slovenian.isl"
+Name: "sv"; MessagesFile: "compiler:Languages\Swedish.isl"
+Name: "th"; MessagesFile: "compiler:Languages\Thai.isl"
+Name: "tr"; MessagesFile: "compiler:Languages\Turkish.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked

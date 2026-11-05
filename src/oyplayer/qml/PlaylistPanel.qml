@@ -60,7 +60,7 @@ Rectangle {
         anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 10; rightMargin: 12 }
         height: 34
         Row {
-            anchors.verticalCenter: parent.verticalCenter
+            anchors { left: parent.left; verticalCenter: parent.verticalCenter }
             spacing: 2
             Repeater {
                 model: [L.t.tab_list, L.t.tab_history, L.t.tab_radio]
@@ -72,7 +72,7 @@ Rectangle {
                     border.color: on ? Theme.lineHi : "transparent"
                     Text { id: tabText; anchors.centerIn: parent; text: modelData
                            color: parent.on ? Theme.accText : Theme.tx3
-                           font.family: Theme.uiFont; font.pixelSize: 10; font.letterSpacing: 1.8 }
+                           font.family: Theme.uiFont; font.pixelSize: 10; font.letterSpacing: 1.8 * Theme.track }
                     MouseArea { anchors.fill: parent; onClicked: pl.tab = index }
                 }
             }
@@ -130,11 +130,11 @@ Rectangle {
                 Raised { z: -1; visible: playing; anchors.fill: parent; radius: parent.radius }
                 Rectangle {   // the playing row: an accent tab on the left
                     visible: playing
-                    x: 0; y: 10; width: 3; height: parent.height - 20; radius: 1.5; color: Theme.acc
+                    anchors.left: parent.left; y: 10; width: 3; height: parent.height - 20; radius: 1.5; color: Theme.acc
                 }
                 Text {
                     id: num
-                    x: 10; width: 22
+                    anchors.left: parent.left; anchors.leftMargin: 10; width: 22
                     anchors.verticalCenter: parent.verticalCenter
                     text: (index < 9 ? "0" : "") + (index + 1)
                     color: playing ? Theme.accText : Theme.inkDim
@@ -216,15 +216,15 @@ Rectangle {
                 Accessible.selectable: true
                 color: sel ? Theme.panelHi : (histArea.containsMouse ? Qt.rgba(1, 1, 1, Theme.light ? 0 : .025) : "transparent")
                 border.color: sel ? Theme.lineHi : "transparent"
-                Rectangle { visible: parent.playing; x: 0; y: 8; width: 3; height: parent.height - 16; radius: 1.5; color: Theme.acc }
+                Rectangle { visible: parent.playing; anchors.left: parent.left; y: 8; width: 3; height: parent.height - 16; radius: 1.5; color: Theme.acc }
                 Text {
-                    x: 12; y: 5; width: parent.width - 70
+                    anchors.left: parent.left; anchors.leftMargin: 12; y: 5; width: parent.width - 70
                     text: modelData.name; elide: Text.ElideMiddle
                     color: parent.playing ? Theme.tx : Theme.tx2
                     font.family: Theme.uiFont; font.pixelSize: 12
                 }
                 Text {
-                    x: 12; y: 22; width: parent.width - 70
+                    anchors.left: parent.left; anchors.leftMargin: 12; y: 22; width: parent.width - 70
                     text: modelData.when + "  ·  " + modelData.folder; elide: Text.ElideMiddle
                     color: Theme.tx3; font.family: Theme.uiFont; font.pixelSize: 10
                 }
@@ -269,7 +269,7 @@ Rectangle {
             spacing: 2
             Text { text: radio.recording ? L.t.on_air_rec : L.t.on_air
                    color: radio.recording ? Theme.accText : Theme.tx3
-                   font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: 2 }
+                   font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: 2 * Theme.track }
             Text { objectName: "radioNow"; width: parent.width; elide: Text.ElideRight
                    text: radio.nowPlaying !== "" ? radio.nowPlaying : player.title
                    color: Theme.tx; font.family: Theme.uiFont; font.pixelSize: 13 }
@@ -298,11 +298,11 @@ Rectangle {
                 Accessible.selectable: true
                 color: sel ? Theme.panelHi : (stArea.containsMouse ? Qt.rgba(1, 1, 1, Theme.light ? 0 : .025) : "transparent")
                 border.color: sel ? Theme.lineHi : "transparent"
-                Rectangle { visible: parent.playing; x: 0; y: 8; width: 3; height: parent.height - 16; radius: 1.5; color: Theme.acc }
-                Text { x: 12; y: 4; width: parent.width - 20; text: modelData.name; elide: Text.ElideRight
+                Rectangle { visible: parent.playing; anchors.left: parent.left; y: 8; width: 3; height: parent.height - 16; radius: 1.5; color: Theme.acc }
+                Text { anchors.left: parent.left; anchors.leftMargin: 12; y: 4; width: parent.width - 20; text: modelData.name; elide: Text.ElideRight
                        color: parent.playing ? Theme.tx : Theme.tx2; font.family: Theme.uiFont; font.pixelSize: 12
                        font.weight: parent.playing ? Font.DemiBold : Font.Normal }
-                Text { x: 12; y: 21; width: parent.width - 20; text: modelData.info || modelData.url; elide: Text.ElideRight
+                Text { anchors.left: parent.left; anchors.leftMargin: 12; y: 21; width: parent.width - 20; text: modelData.info || modelData.url; elide: Text.ElideRight
                        color: Theme.tx3; font.family: Theme.uiFont; font.pixelSize: 10 }
                 MouseArea { id: stArea; anchors.fill: parent; hoverEnabled: true
                             onClicked: { pl.stSel = index; pl.picked() }
@@ -325,7 +325,7 @@ Rectangle {
             visible: pl.tab === 2 && pl.adding
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 8 }
             spacing: 6
-            Text { text: L.t.new_station; color: Theme.tx3; font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: 2 }
+            Text { text: L.t.new_station; color: Theme.tx3; font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: 2 * Theme.track }
             Field { id: stUrl; width: parent.width; placeholder: L.t.stream_url }
             Field { id: stName; width: parent.width; placeholder: L.t.st_name }
             Row {
@@ -409,7 +409,7 @@ Rectangle {
             anchors.right: parent.right
             spacing: 8
             Text { anchors.verticalCenter: parent.verticalCenter; visible: radio.recording
-                   text: L.t.rec_caps; color: Theme.accText; font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: 2 }
+                   text: L.t.rec_caps; color: Theme.accText; font.family: Theme.uiFont; font.pixelSize: 9; font.letterSpacing: 2 * Theme.track }
             KeyCap { objectName: "radioRecord"; glyph: Theme.icRecord; glyphSize: 15; width: 28; height: 26
                      latched: radio.recording; enabled: radio.streaming || radio.recording; opacity: enabled ? 1 : .35
                      tip: radio.recording ? L.t.rec_stop : L.t.rec_start

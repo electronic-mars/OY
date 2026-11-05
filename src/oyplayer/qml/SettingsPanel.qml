@@ -53,7 +53,7 @@ Popup {
     }
     component Caption: Text {
         leftPadding: 4; topPadding: 6
-        color: Theme.tx3; font.family: Theme.uiFont; font.pixelSize: 10; font.letterSpacing: 2.2
+        color: Theme.tx3; font.family: Theme.uiFont; font.pixelSize: 10; font.letterSpacing: 2.2 * Theme.track
     }
 
     contentItem: Item {
@@ -76,16 +76,17 @@ Popup {
         // ---- navigation (MAS tabs, vertical)
         Rectangle {
             id: nav
-            width: 208; height: parent.height
+            anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+            width: 208
             color: "transparent"
-            Text { x: 20; y: 18; text: L.t.s_caps; color: Theme.tx2
-                   font.family: Theme.uiFont; font.pixelSize: 11; font.letterSpacing: 2.6 }
+            Text { anchors.left: parent.left; anchors.leftMargin: 20; y: 18; text: L.t.s_caps; color: Theme.tx2
+                   font.family: Theme.uiFont; font.pixelSize: 11; font.letterSpacing: 2.6 * Theme.track }
             Rectangle {
-                x: 12; y: 46; width: parent.width - 20; height: navCol.height + 8
+                anchors.left: parent.left; anchors.leftMargin: 12; y: 46; width: parent.width - 20; height: navCol.height + 8
                 radius: 11; color: Theme.sunk
                 Column {
                     id: navCol
-                    x: 4; y: 4; width: parent.width - 8; spacing: 2
+                    anchors.left: parent.left; anchors.leftMargin: 4; y: 4; width: parent.width - 8; spacing: 2
                     Repeater {
                         model: sp.sections
                         Rectangle {
@@ -95,10 +96,12 @@ Popup {
                             color: on ? Theme.panelHi : "transparent"
                             border.color: on ? Theme.lineHi : "transparent"
                             // About in the accent while a newer version waits
-                            Icon { x: 12; anchors.verticalCenter: parent.verticalCenter; name: modelData.icon
+                            Icon { anchors.left: parent.left; anchors.leftMargin: 12; anchors.verticalCenter: parent.verticalCenter; name: modelData.icon
                                    size: 16; color: parent.on || (index === 7 && updater.state === "available") ? Theme.accText : Theme.tx3 }
-                            Text { x: 38; anchors.verticalCenter: parent.verticalCenter; text: modelData.title
-                                   font.family: Theme.uiFont; font.pixelSize: 13; color: parent.on ? Theme.tx : Theme.tx2 }
+                            // a long name takes a second line
+                            Text { anchors.left: parent.left; anchors.leftMargin: 38; anchors.verticalCenter: parent.verticalCenter; text: modelData.title
+                                   width: parent.width - 44; wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight
+                                   lineHeight: .9; font.family: Theme.uiFont; font.pixelSize: 13; color: parent.on ? Theme.tx : Theme.tx2 }
                             MouseArea { anchors.fill: parent; onClicked: { actions.stopCapture(); sp.section = index; flick.contentY = 0 } }
                         }
                     }
@@ -110,7 +113,7 @@ Popup {
                 objectName: "resetSection"
                 property bool armed: false
                 visible: sp.sectionKeys[sp.section].length > 0
-                x: 12; anchors.bottom: parent.bottom; anchors.bottomMargin: 12
+                anchors.left: parent.left; anchors.leftMargin: 12; anchors.bottom: parent.bottom; anchors.bottomMargin: 12
                 width: resetRow.implicitWidth + 20; height: 28; radius: 7
                 color: resetArea.containsMouse ? Theme.card : "transparent"
                 border.color: armed ? Theme.accA(.6) : resetArea.containsMouse ? Theme.line : "transparent"
@@ -289,9 +292,9 @@ Popup {
                                                  readonly property bool on: sp.v.audioDevice === modelData.name
                                                  color: on ? Theme.panelHi : "transparent"
                                                  border.color: on ? Theme.lineHi : "transparent"
-                                                 Rectangle { visible: parent.on; x: 10; anchors.verticalCenter: parent.verticalCenter
+                                                 Rectangle { visible: parent.on; anchors.left: parent.left; anchors.leftMargin: 10; anchors.verticalCenter: parent.verticalCenter
                                                              width: 6; height: 6; radius: 3; color: Theme.acc }
-                                                 Text { x: 24; anchors.verticalCenter: parent.verticalCenter; width: parent.width - 30; elide: Text.ElideRight
+                                                 Text { anchors.left: parent.left; anchors.leftMargin: 24; anchors.verticalCenter: parent.verticalCenter; width: parent.width - 30; elide: Text.ElideRight
                                                         text: modelData.name === "auto" ? L.t.as_windows : modelData.description
                                                         color: Theme.tx; font.family: Theme.uiFont; font.pixelSize: 12 }
                                                  MouseArea { anchors.fill: parent; onClicked: settings.set("audioDevice", modelData.name) }
@@ -429,7 +432,7 @@ Popup {
                             model: (L.lang, actions.bindable())
                             Item {
                                 width: keyCard.width; height: 34
-                                Text { x: 16; anchors.verticalCenter: parent.verticalCenter; text: modelData.title
+                                Text { anchors.left: parent.left; anchors.leftMargin: 16; anchors.verticalCenter: parent.verticalCenter; text: modelData.title
                                        color: Theme.tx2; font.family: Theme.uiFont; font.pixelSize: 12 }
                                 Row {
                                     anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
@@ -439,7 +442,7 @@ Popup {
                                         Rectangle {
                                             width: chip.implicitWidth + 26; height: 24; radius: 6
                                             color: Theme.sunk; border.color: Theme.line
-                                            Text { id: chip; x: 8; anchors.verticalCenter: parent.verticalCenter; text: modelData
+                                            Text { id: chip; anchors.left: parent.left; anchors.leftMargin: 8; anchors.verticalCenter: parent.verticalCenter; text: modelData
                                                    color: Theme.tx; font.family: Theme.uiFont; font.pixelSize: 11 }
                                             Icon { anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
                                                    name: Theme.icCancel; size: 11; stroke: 2
@@ -539,7 +542,8 @@ Popup {
                             color: skinArea.containsMouse && !modelData.locked ? Theme.panelHi : Theme.card
                             border.color: chosen ? Theme.accA(.85) : skinArea.containsMouse ? Theme.lineHi : Theme.line
                             border.width: chosen ? 2 : 1
-                            Text { x: 14; y: 10; text: modelData.name[i18n.lang] || modelData.name.en
+                            Text { anchors.left: parent.left; anchors.leftMargin: 14; y: 10
+                                   text: modelData.id === "default" ? L.t.skin_default : modelData.name[i18n.lang] || modelData.name.en
                                    color: modelData.locked ? Theme.tx2 : Theme.tx
                                    font.family: Theme.uiFont; font.pixelSize: 13; font.weight: Font.DemiBold }
                             Row {
