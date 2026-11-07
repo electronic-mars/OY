@@ -5,6 +5,8 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-11-07
+
 ### Changed
 - The empty window shows the player's own mark, its play key, over the name instead of a film; a click on it opens a file.
 
