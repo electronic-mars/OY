@@ -1,2 +1,2 @@
 """OY Player: a video player for Windows."""
-__version__ = "0.15.0"
+__version__ = "0.16.0"
