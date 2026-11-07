@@ -14,6 +14,23 @@ No ads, no telemetry, no account. Licensed under the [GNU GPL v3](LICENSE).
 
 Installers are attached to the [GitHub releases](https://github.com/electronic-mars/OY/releases). The installer is per-user and needs no administrator rights. It is not code-signed yet, so Windows SmartScreen will ask for confirmation on first start. After that the player updates itself: when a new version is out, About › Update and restart installs it.
 
+## Is it safe?
+
+Windows SmartScreen warns about the installer because it is not code-signed yet: a signing certificate costs money every year, and OY Player is a one-developer open-source project. The warning says Windows does not know the publisher; it does not mean anything was found in the file. To install anyway, choose «More info», then «Run anyway».
+
+You do not have to take that on trust:
+
+- **It is built in public.** Every release is built from this source code by [GitHub Actions](.github/workflows/release.yml) on a clean Windows machine, not on a developer's PC. Each release page links to the run that built it in the repository's [Actions](https://github.com/electronic-mars/OY/actions) tab.
+- **Check the file you downloaded.** Each release page shows the installer's SHA-256. In PowerShell:
+
+  ```powershell
+  Get-FileHash .\OYPlayer-X.Y.Z-setup.exe -Algorithm SHA256
+  ```
+
+  The hash must match the one on the release page.
+- **Ask the antivirus engines.** Each release page links to VirusTotal by that hash. If VirusTotal has not seen the file yet, the link offers to upload it instead: you can upload the installer you downloaded and get the scan of exactly those bytes.
+- **It keeps to itself.** No telemetry, no ads, no account. The only thing the player asks the internet for on its own is the version file of the latest release on GitHub, once a day, to tell you an update is out.
+
 ## Build from source
 
 Needs Windows 10 or 11, Python 3.14, and:
