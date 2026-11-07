@@ -136,7 +136,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { "::error::the installer was not signed: $(($said -split "`n")[-1])"; exit 1 }
           Get-Content dist\latest.json
 
-      - name: The release page's text, with the installer's SHA-256 and VirusTotal link
+      - name: The release page's text, with the installer's SHA-256
         shell: pwsh
         run: |
           # Written on every run and shown in the run's summary, so a branch run shows the page a
@@ -149,7 +149,7 @@ jobs:
             # the runner exits with the last native exit code: python's, unless reset
             $global:LASTEXITCODE = 0
             $sha = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
-            "SHA-256 of ``$(Split-Path $setup -Leaf)``: ``$sha``  `n[VirusTotal](https://www.virustotal.com/gui/file/$sha)" | Out-File notes.md -Encoding utf8
+            "SHA-256 of ``$(Split-Path $setup -Leaf)``: ``$sha``" | Out-File notes.md -Encoding utf8
           }
           Get-Content notes.md -Raw | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 

@@ -20,9 +20,7 @@ The player installs only an installer signed by the release key (`src/oyplayer/u
 
 ## The release page and trust
 
-`tools/release_notes.py` writes the release page from the CHANGELOG section and adds how to check the download: the installer's SHA-256, the `Get-FileHash` command, a VirusTotal link by that hash (`https://www.virustotal.com/gui/file/<sha256>`) and a link to the Actions run that built it. Every run, a branch run too, shows that text in its summary, so the page can be read before a tag publishes it.
-
-VirusTotal knows a file only after someone uploads it; the link works without an API key, but until the first upload it offers to upload instead. After publishing, upload the installer once at <https://www.virustotal.com/gui/home/upload> (free, no key needed in the browser) so the link on the page shows a report.
+`tools/release_notes.py` writes the release page from the CHANGELOG section and adds how to check the download: the installer's SHA-256, the `Get-FileHash` command and a link to the Actions run that built it. Every run, a branch run too, shows that text in its summary, so the page can be read before a tag publishes it.
 
 ## winget
 

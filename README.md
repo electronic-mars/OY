@@ -28,7 +28,6 @@ You do not have to take that on trust:
   ```
 
   The hash must match the one on the release page.
-- **Ask the antivirus engines.** Each release page links to VirusTotal by that hash. If VirusTotal has not seen the file yet, the link offers to upload it instead: you can upload the installer you downloaded and get the scan of exactly those bytes.
 - **It keeps to itself.** No telemetry, no ads, no account. The only thing the player asks the internet for on its own is the version file of the latest release on GitHub, once a day, to tell you an update is out.
 
 ## Build from source

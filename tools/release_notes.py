@@ -35,7 +35,7 @@ The installer is not code-signed, so Windows SmartScreen will warn on first star
 ### Check the download
 SHA-256 of `{installer.name}`: `{sha}`
 
-In PowerShell, `Get-FileHash .\\{installer.name} -Algorithm SHA256` must print the same hash. [VirusTotal report for this hash](https://www.virustotal.com/gui/file/{sha}): if VirusTotal has not seen the file yet, the page offers to upload it.
+In PowerShell, `Get-FileHash .\\{installer.name} -Algorithm SHA256` must print the same hash.
 {built}""", encoding="utf-8")
     print(f"notes for {version} -> {out}")
     return 0
