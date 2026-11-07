@@ -5,6 +5,12 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 
 ## [Unreleased]
 
+### Changed
+- The empty window shows the player's own mark, its play key, over the name instead of a film; a click on it opens a file.
+
+### Fixed
+- 0.16.0 could close by itself now and then while a file opened: the new crash record wrote down every thread at each error mpv's scripts raise and catch themselves, many times a second, and that writing itself could crash. It now records only the thread that fails, and only a real crash.
+
 ## [0.16.0] - 2026-11-07
 
 ### Added

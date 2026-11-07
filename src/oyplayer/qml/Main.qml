@@ -569,14 +569,18 @@ Window {
     }
 
     // ---------- empty state
-    // a film over the name, and F2 drawn as the key it is (Gemini's empty state)
+    // the program's mark over the name (its play key, as in About; a click opens a file), and F2
+    // drawn as the key it is (Gemini's empty state)
     Column {
         visible: !player.hasFile
         anchors.centerIn: videoArea
-        spacing: 10
-        Icon {
+        spacing: 14
+        PlayKey {
+            objectName: "emptyKey"
             anchors.horizontalCenter: parent.horizontalCenter
-            name: "film"; size: 32; stroke: 1.5; color: Theme.tx3; opacity: .6
+            grow: 0; width: 56; height: 56; name: "OY Player"
+            onClicked: actions.run("open_file")
+            onRightClicked: actions.run("open_file")
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
