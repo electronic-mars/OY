@@ -61,7 +61,12 @@ def dx_interop():
         return False
     _opengl32.wglGetCurrentDC.restype = ctypes.c_void_p
     ext = _gl_fn("wglGetExtensionsStringARB", ctypes.c_char_p, ctypes.c_void_p)
-    found = b"WGL_NV_DX_interop2" in (ext(_opengl32.wglGetCurrentDC()) or b"").split()
+    try:
+        found = b"WGL_NV_DX_interop2" in (ext(_opengl32.wglGetCurrentDC()) or b"").split()
+    except OSError:
+        # Qt's software OpenGL (no video card driver: a build server, a bare virtual machine) is
+        # not opengl32.dll's: the entry point found there is no function (measured: access violation)
+        found = False
     ctx.doneCurrent()
     return found
 

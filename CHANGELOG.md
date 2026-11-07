@@ -13,6 +13,9 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 - Settings › About: «Project page» opens the player's page on the developer's site, «Source code» the GitHub repository, and «Support the developer» the site's ways to say thanks (the old «Thank» key went to a section of GitHub that does not exist).
 - Installed apps link to the developer's site, the issues and the releases.
 
+### Fixed
+- On a computer without a video card driver (a bare virtual machine, Windows' basic display adapter) the player did not start at all: its check for the video card's Direct3D sharing failed on Windows' software OpenGL. It now plays through OpenGL there.
+
 ## [0.15.0] - 2026-11-07
 
 ### Added
