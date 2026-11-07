@@ -24,6 +24,11 @@ if exist "%ROOT%\tests\next-run-showcase" (
     set "TARGET=showcase"
     del "%ROOT%\tests\next-run-showcase"
 )
+rem FEATURES.md's pictures (showcase.py, Features): tests\next-run-features, used up the same way.
+if exist "%ROOT%\tests\next-run-features" (
+    set "TARGET=features"
+    del "%ROOT%\tests\next-run-features"
+)
 echo target=%TARGET%
 rem A run starts from nothing: stale settings or playlist from the last run must not leak in.
 if exist "%OUT%" rmdir /s /q "%OUT%"
@@ -33,6 +38,7 @@ set OY_SHOTS=%OUT%\shots
 set PYTHONIOENCODING=utf-8
 if "%TARGET%"=="exe" goto exe
 if "%TARGET%"=="showcase" goto showcase
+if "%TARGET%"=="features" goto features
 cd /d "%ROOT%\src"
 "%ROOT%\.venv\Scripts\python.exe" -u -m oyplayer --selftest "%ROOT%\tests\media\test720.mp4" "%OUT%" > "%OUT%\out.txt" 2>&1
 set CODE=%ERRORLEVEL%
@@ -54,6 +60,22 @@ exit /b %CODE%
 :showcase
 cd /d "%ROOT%\src"
 "%ROOT%\.venv\Scripts\python.exe" -u -m oyplayer --showcase "%ROOT%\tests\media\showcase" "%OUT%" > "%OUT%\out.txt" 2>&1
+set CODE=%ERRORLEVEL%
+findstr /c:"SHOWCASE" /c:"SELFCHECK FAIL" "%OUT%\out.txt"
+echo exit=%CODE%
+exit /b %CODE%
+
+:features
+rem The home, the screenshots and the clips in a folder of their own, so the pictures show the
+rem paths of an ordinary install and none of this working copy; the captures in tests\out\showcase.
+set "SC=%LOCALAPPDATA%\OYPlayerShowcase"
+if exist "%SC%\home" rmdir /s /q "%SC%\home"
+if exist "%SC%\Screenshots" rmdir /s /q "%SC%\Screenshots"
+if not exist "%SC%\Videos" if exist "%ROOT%\tests\media\showcase" xcopy /e /i /q "%ROOT%\tests\media\showcase" "%SC%\Videos" >nul
+set OY_HOME=%SC%\home
+set OY_SHOTS=%SC%\Screenshots
+cd /d "%ROOT%\src"
+"%ROOT%\.venv\Scripts\python.exe" -u -m oyplayer --features "%SC%\Videos" "%OUT%" > "%OUT%\out.txt" 2>&1
 set CODE=%ERRORLEVEL%
 findstr /c:"SHOWCASE" /c:"SELFCHECK FAIL" "%OUT%\out.txt"
 echo exit=%CODE%

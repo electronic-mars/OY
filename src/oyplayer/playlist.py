@@ -142,7 +142,7 @@ class Playlist(QAbstractListModel):
         self._reader = ThreadPoolExecutor(max_workers=1)
         self._durationReady.connect(self._set_duration, Qt.QueuedConnection)
         self._thumbReady.connect(self._set_thumb, Qt.QueuedConnection)
-        self._thumbing = set()     # files whose frame was asked for in this run
+        self._thumbs = {}          # a file's frame in this run: its URL ("" none), None while it is made
         self._expanded.connect(self._insert, Qt.QueuedConnection)
         self._found.connect(self._add_following, Qt.QueuedConnection)
         self.p.eofReached.connect(self._on_eof)
@@ -404,17 +404,23 @@ class Playlist(QAbstractListModel):
 
     @Slot(int)
     def wantThumb(self, row):
-        """A row came on screen: its frame, once per file and run, from the pool."""
+        """A row came on screen: its frame, made once per file and run in the pool. A file added
+        again (the list cleared and filled) gets the frame already made."""
         if not 0 <= row < len(self.items):
             return
         it = self.items[row]
         path = it["path"]
-        if path in self._thumbing or "://" in path:
+        if "://" in path:
             return
-        self._thumbing.add(path)
+        if path in self._thumbs:
+            if self._thumbs[path] and not it.get("thumb"):
+                self._thumbReady.emit(path, self._thumbs[path])     # queued: not inside the row's creation
+            return
+        self._thumbs[path] = None
         self._pool.submit(lambda: self._thumbReady.emit(path, make_thumb(path, it["duration"] or probe_duration(path))))
 
     def _set_thumb(self, path, url):
+        self._thumbs[path] = url
         for n, it in enumerate(self.items):
             if it["path"] == path and it.get("thumb", "") != url:
                 it["thumb"] = url

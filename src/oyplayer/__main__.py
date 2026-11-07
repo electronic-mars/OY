@@ -178,7 +178,7 @@ def main(argv):
         unregister()
         return 0
     # the showcase (master screenshots) runs under the self-test's rules: monitor 3, silent, no focus
-    showcase = len(argv) >= 4 and argv[1] == "--showcase"
+    showcase = len(argv) >= 4 and argv[1] in ("--showcase", "--features")
     selftest = len(argv) >= 4 and argv[1] == "--selftest" or showcase
     app = QApplication(argv)
     app.setApplicationName("OY Player")
@@ -399,16 +399,16 @@ def main(argv):
     log.info("started, log %s", log_path)
 
     test = None
+    m8 = dict(autoskip=autoskip, radio=radio, scheduler=scheduler, tray=tray, keys=keys, info=info,
+              history=player.history, updater=updater, skins=skins, shot=shot, shot_win=shot_win, curtain=curtain)
     if showcase:
-        from .showcase import Showcase
-        test = Showcase(app, win, player, playlist, actions, argv[2:], settings, editor, preview)
+        from .showcase import Features, Showcase
+        test = (Features if argv[1] == "--features" else Showcase)(app, win, player, playlist, actions, argv[2:],
+                                                                  settings, editor, preview, m8)
         underlay.ready.connect(test.start)
     elif selftest:
         from .selftest import SelfTest
-        test = SelfTest(app, win, player, playlist, actions, argv[2:], settings, editor, preview,
-                        m8=dict(autoskip=autoskip, radio=radio, scheduler=scheduler, tray=tray,
-                                keys=keys, info=info, history=player.history, updater=updater, skins=skins, shot=shot, shot_win=shot_win,
-                                curtain=curtain))
+        test = SelfTest(app, win, player, playlist, actions, argv[2:], settings, editor, preview, m8=m8)
         underlay.ready.connect(test.start)
 
     def save_state():
