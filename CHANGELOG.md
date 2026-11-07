@@ -10,7 +10,7 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 - Issue forms for bug reports and feature requests, and a security policy: security problems are reported privately through GitHub.
 
 ### Changed
-- Settings › About: «Project page» opens the player's page on the developer's site, «Source code» the GitHub repository, and «Support the developer» the site's ways to say thanks (the old «Thank» key went to a section of GitHub that does not exist).
+- Settings › About: two keys under the version, «Support the developer» (the site's ways to say thanks: Ko-fi, Patreon, Donatello, crypto) and «Developer's site» (the player's page there), and a quiet line to the source code on GitHub. The old «Thank» key went to a section of GitHub that does not exist.
 - Installed apps link to the developer's site, the issues and the releases.
 
 ### Fixed

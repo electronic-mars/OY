@@ -5317,17 +5317,21 @@ class SelfTest(QObject):
     def s_rp_about(self):
         info = self.m8["info"]
         info.opened.clear()
-        keys = [self.find_item(n) for n in ("aboutProject", "aboutSource", "aboutSupport")]
+        keys = [self.find_item(n) for n in ("aboutSupport", "aboutSite", "aboutSource")]
+        self.shot("report_03_about")            # before the clicks: the page as it opens
         if all(keys):
             for k in keys:
                 self.click_item(k)
-        want = ["https://electronic-mars.github.io/#oy-player", "https://github.com/electronic-mars/OY",
-                "https://electronic-mars.github.io/#support"]
-        self.check("About: the project's page, the source on GitHub, «Support the developer» to the site's thanks",
-                   all(keys) and list(info.opened) == want and keys[2].property("accent") is True
-                   and keys[2].property("text") == "Support the developer",
-                   f"keys={[k is not None for k in keys]} opened={list(info.opened)}")
-        self.shot("report_03_about")
+        want = ["https://electronic-mars.github.io/#support", "https://electronic-mars.github.io/#oy-player",
+                "https://github.com/electronic-mars/OY"]
+        side = all(keys[:2]) and abs(keys[0].mapToScene(QPointF(0, 0)).y() - keys[1].mapToScene(QPointF(0, 0)).y()) < 1
+        self.check("About, as in MAS: «Support the developer» (the accent, a heart) and «Developer's site» (a globe) "
+                   "side by side under the version; the source a quiet line",
+                   all(keys) and side and list(info.opened) == want and keys[0].property("accent") is True
+                   and keys[0].property("icon") == "heart" and keys[1].property("icon") == "globe"
+                   and keys[1].property("accent") is False and keys[0].property("text") == "Support the developer"
+                   and keys[1].property("text") == "Developer's site",
+                   f"keys={[k is not None for k in keys]} side by side={side} opened={list(info.opened)}")
         self.rp_about_whole("en")
 
     def rp_about_whole(self, code):

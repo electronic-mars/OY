@@ -1,7 +1,8 @@
 import QtQuick
 
 // About (the settings' last section): what this is, which version, where it keeps its things,
-// the update, and the way to the project's page, its source and to thanking the author. The owner's pick of Argon's
+// the way to thanking the author and to the player's page (two keys under the version, as MAS
+// has them), the update, and a quiet line to the source. The owner's pick of Argon's
 // variants (03.11): a card in a frame of the accent, the play key itself as the program's mark.
 Column {
     id: about
@@ -12,20 +13,6 @@ Column {
     readonly property string source: "https://github.com/electronic-mars/OY"
     readonly property string support: "https://electronic-mars.github.io/#support"
     spacing: 10
-    // the page, the source and the thanks, each on its own line as the update is: a sentence, its key
-    component LinkRow: Row {
-        property alias hint: hintText.text
-        property alias keyText: keyButton.text
-        property alias keyName: keyButton.objectName
-        property alias accent: keyButton.accent
-        signal clicked()
-        width: about.availableWidth
-        spacing: 10
-        Text { id: hintText; width: parent.width - keyButton.width - parent.spacing
-               anchors.verticalCenter: parent.verticalCenter; wrapMode: Text.Wrap; color: Theme.tx2
-               font.family: Theme.uiFont; font.pixelSize: 12 }
-        PillButton { id: keyButton; anchors.verticalCenter: parent.verticalCenter; onClicked: parent.clicked() }
-    }
     Item { width: 1; height: about.padding - about.spacing }
     Column {
         x: about.padding
@@ -45,6 +32,15 @@ Column {
                 Text { textFormat: Text.StyledText; color: Theme.tx3; font.family: Theme.uiFont; font.pixelSize: 12
                        text: L.t.about_version.arg("<font color='" + Theme.accText + "'>" + app.version + "</font>") }
             }
+        }
+        // the owner's two keys, as in MAS: the thanks in the accent first, the site beside it
+        Flow {
+            width: about.availableWidth
+            spacing: 8
+            PillButton { objectName: "aboutSupport"; icon: "heart"; accent: true; text: L.t.about_support
+                         onClicked: app.openLink(about.support) }
+            PillButton { objectName: "aboutSite"; icon: "globe"; text: L.t.about_devsite
+                         onClicked: app.openLink(about.project) }
         }
         Rectangle { width: about.availableWidth; height: 1; color: Theme.accA(.35) }
         Text { width: about.availableWidth; wrapMode: Text.Wrap; color: Theme.tx2; lineHeight: 1.15
@@ -102,13 +98,19 @@ Column {
             width: about.availableWidth; height: 3; radius: 1.5; color: Theme.groove
             Rectangle { width: parent.width * updater.percent / 100; height: parent.height; radius: 1.5; color: Theme.acc }
         }
-        Rectangle { width: about.availableWidth; height: 1; color: Theme.accA(.35) }
-        LinkRow { hint: L.t.about_project_h; keyName: "aboutProject"; keyText: L.t.about_project
-                  onClicked: app.openLink(about.project) }
-        LinkRow { hint: L.t.about_source_h; keyName: "aboutSource"; keyText: L.t.about_source
-                  onClicked: app.openLink(about.source) }
-        LinkRow { hint: L.t.about_support_h; keyName: "aboutSupport"; keyText: L.t.about_support; accent: true
-                  onClicked: app.openLink(about.support) }
+        // the source, quietly: the GPL's promise, not a thing to press first
+        Text {
+            objectName: "aboutSource"
+            width: about.availableWidth; wrapMode: Text.Wrap
+            text: L.t.about_source_line
+            color: sourceArea.containsMouse ? Theme.accText : Theme.tx3
+            font.family: Theme.uiFont; font.pixelSize: 11; font.underline: sourceArea.containsMouse
+            Accessible.role: Accessible.Link
+            Accessible.name: text
+            Accessible.onPressAction: app.openLink(about.source)
+            MouseArea { id: sourceArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                        onClicked: app.openLink(about.source) }
+        }
     }
     Item { width: 1; height: about.padding - about.spacing }
 }

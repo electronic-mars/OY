@@ -173,9 +173,8 @@ EN = {
     "osd_scheduler": "Scheduler: %1", "osd_cancelled": "Cancelled",
     # the window
     "about": "About", "about_version": "version %1",
-    "about_project": "Project page", "about_project_h": "What the player does, screenshots and the download",
-    "about_source": "Source code", "about_source_h": "The code and the bug reports, on GitHub",
-    "about_support": "Support the developer", "about_support_h": "Saved you some time? The site lists the ways to say thanks",
+    "about_support": "Support the developer", "about_devsite": "Developer's site",
+    "about_source_line": "Source code and bug reports on GitHub",
     # the card after the last run went down (crash.py)
     "crash_title": "OY Player closed unexpectedly last time",
     "crash_text": "A report helps fix it. It holds the version, Windows and the error's line, nothing about your files.",
@@ -560,9 +559,8 @@ UK = {
     "osd_scheduler": "Планувальник: %1", "osd_cancelled": "Скасовано",
     # the window
     "about": "Про програму", "about_version": "версія %1",
-    "about_project": "Сторінка проєкту", "about_project_h": "Що вміє плеєр, знімки екрана й завантаження",
-    "about_source": "Вихідний код", "about_source_h": "Код і повідомлення про помилки — на GitHub",
-    "about_support": "Підтримати розробника", "about_support_h": "Плеєр заощадив вам час? Способи подякувати — на сайті",
+    "about_support": "Підтримати розробника", "about_devsite": "Сайт розробника",
+    "about_source_line": "Вихідний код і повідомлення про помилки — на GitHub",
     "crash_title": "Минулого разу OY Player несподівано закрився",
     "crash_text": "Звіт допоможе це виправити. У ньому версія, Windows і рядок помилки — нічого про ваші файли.",
     "crash_report": "Повідомити", "crash_folder": "Відкрити теку журналу", "crash_close": "Закрити",
