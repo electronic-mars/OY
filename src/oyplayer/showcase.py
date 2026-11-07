@@ -327,8 +327,7 @@ class Features(Showcase):
                             self.win.setProperty("playlistShown", True))
 
         def again():    # the clips in the list again, paused on the same frame; the list shown, so its rows ask for their frames
-            # the list asks for a file's frame once per run: forgotten here, so the same files show theirs again
-            return [(0, tab(0)), (0, lambda: (self.pl.clear(), self.pl._thumbing.clear(), self.pl.add(files, True))),
+            return [(0, tab(0)), (0, lambda: (self.pl.clear(), self.pl.add(files, True))),
                     (3000, lambda: setattr(self.p.mpv, "pause", True)), (0, lambda: self.p.seek(12.0))]
 
         self.steps_raw = [
@@ -374,9 +373,7 @@ class Features(Showcase):
             # a phone's upright video in a 16:9 frame over a blurred copy of itself
             (600, self.ed.close), (300, lambda: self.pl.add([self.phone], True)), (2500, lambda: setattr(self.p.mpv, "pause", True)),
             (0, lambda: self.p.seek(3.0)), (300, run("edit_mode")), (800, lambda: self.ed.setFrame("blur")),
-            # software decoding: with hardware decoding the preview of this frame shows a green half (a bug, not the saved file)
-            (0, lambda: set_("hwdec", False)), (1500, lambda: self.p.seek(3.0)),
-            (1500, shot("editor-frame-16x9")), (0, lambda: set_("hwdec", True)),
+            (1500, lambda: self.p.seek(3.0)), (1500, shot("editor-frame-16x9")),
             (0, self.ed.undo), (600, self.ed.close),
         ] + again() + [
             (0, lambda: self.win.setProperty("playlistShown", False)), (0, subs(True)),

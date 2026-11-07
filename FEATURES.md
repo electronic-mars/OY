@@ -341,4 +341,4 @@ The player takes them of itself: `tests\next-run-features` (an empty file) and t
 focus, on painted test clips, and write `tests\out\showcase\*.png` at the window's size,
 1600 × 900. The run's settings, screenshots and clips live in `%LOCALAPPDATA%\OYPlayerShowcase`,
 so the pictures show an ordinary install's paths. The names of the sound devices of the
-computer that took them are blurred, and the 16:9 frame is shot with software decoding.
+computer that took them are blurred.
