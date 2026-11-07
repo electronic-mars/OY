@@ -136,6 +136,23 @@ jobs:
           if ($LASTEXITCODE -ne 0) { "::error::the installer was not signed: $(($said -split "`n")[-1])"; exit 1 }
           Get-Content dist\latest.json
 
+      - name: The release page's text, with the installer's SHA-256 and VirusTotal link
+        shell: pwsh
+        run: |
+          # Written on every run and shown in the run's summary, so a branch run shows the page a
+          # tag would publish. A branch whose version has no CHANGELOG section yet only says so.
+          $setup = "dist\OYPlayer-$env:VERSION-setup.exe"
+          .venv\Scripts\python tools\release_notes.py $env:VERSION $setup notes.md
+          if ($LASTEXITCODE -ne 0) {
+            if ("${{ github.ref_type }}" -eq "tag") { "::error::no release notes for $env:VERSION in CHANGELOG.md"; exit 1 }
+            "::warning::CHANGELOG.md has no section for $env:VERSION yet"
+            # the runner exits with the last native exit code: python's, unless reset
+            $global:LASTEXITCODE = 0
+            $sha = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
+            "SHA-256 of ``$(Split-Path $setup -Leaf)``: ``$sha``  `n[VirusTotal](https://www.virustotal.com/gui/file/$sha)" | Out-File notes.md -Encoding utf8
+          }
+          Get-Content notes.md -Raw | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
       - name: Publish the release
         if: github.ref_type == 'tag'
         shell: pwsh
@@ -143,7 +160,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $setup = "dist\OYPlayer-$env:VERSION-setup.exe"
-          .venv\Scripts\python tools\release_notes.py $env:VERSION $setup notes.md
-          if ($LASTEXITCODE -ne 0) { "::error::no release notes for $env:VERSION in CHANGELOG.md"; exit 1 }
           gh release create "${{ github.ref_name }}" $setup dist\latest.json --title "OY Player $env:VERSION" --notes-file notes.md
           if ($LASTEXITCODE -ne 0) { "::error::the release was not created"; exit 1 }

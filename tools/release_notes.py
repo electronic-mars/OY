@@ -1,8 +1,9 @@
-"""Write the text of a release page: the version's CHANGELOG section, how to install, the checksum.
+"""Write the text of a release page: the version's CHANGELOG section, how to install, how to check.
 
     python tools/release_notes.py <version> <installer> <out.md>
 """
 import hashlib
+import os
 import re
 import sys
 from pathlib import Path
@@ -19,6 +20,11 @@ def main():
     if not found or not found.group(1).strip():
         raise SystemExit(f"CHANGELOG.md has no section for {version}")
     sha = hashlib.sha256(installer.read_bytes()).hexdigest()
+    # on GitHub Actions the page names the run that built the file; elsewhere it says nothing
+    run = os.environ.get("GITHUB_RUN_ID")
+    built = (f"\nBuilt from this tag's source by [this GitHub Actions run]"
+             f"({os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run}).\n"
+             if run else "")
     out.write_text(f"""{found.group(1).strip()}
 
 ### Install
@@ -26,8 +32,11 @@ Download `{installer.name}` below and run it. It installs for the current user w
 
 The installer is not code-signed, so Windows SmartScreen will warn on first start: choose «More info», then «Run anyway».
 
+### Check the download
 SHA-256 of `{installer.name}`: `{sha}`
-""", encoding="utf-8")
+
+In PowerShell, `Get-FileHash .\\{installer.name} -Algorithm SHA256` must print the same hash. [VirusTotal report for this hash](https://www.virustotal.com/gui/file/{sha}): if VirusTotal has not seen the file yet, the page offers to upload it.
+{built}""", encoding="utf-8")
     print(f"notes for {version} -> {out}")
     return 0
 
