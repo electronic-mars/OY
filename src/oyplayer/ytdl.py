@@ -12,13 +12,11 @@ import subprocess
 import threading
 import time
 import zipfile
-from pathlib import Path
 from urllib.parse import urlparse
 
 from PySide6.QtCore import Property, QObject, Signal, Slot
 
 from .log import home, log
-from .playlist import MEDIA_EXT
 from .update import CHUNK, _open
 
 YTDLP_URL = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
@@ -46,13 +44,18 @@ def ready():
     return ytdlp().is_file() and deno().is_file()
 
 
+# The sites whose pages are worth asking for yt-dlp. Any other address is opened by mpv itself
+# as before: a radio station's /stream has no file ending either, and must not ask.
+SITES = ("youtube.com", "youtu.be", "youtube-nocookie.com", "vimeo.com", "twitch.tv", "tiktok.com",
+         "dailymotion.com", "x.com", "twitter.com", "instagram.com", "facebook.com", "fb.watch",
+         "reddit.com", "soundcloud.com", "bilibili.com", "rumble.com", "streamable.com", "kick.com")
+
+
 def is_page(url):
-    """An address yt-dlp is for: a web page, not a stream or a file mpv opens itself."""
+    """A page of a video site, which only yt-dlp can turn into a picture."""
     where = urlparse(url)
-    if where.scheme not in ("http", "https") or not where.hostname:
-        return False
-    return Path(where.path).suffix.lower() not in MEDIA_EXT and not where.path.lower().endswith(
-        (".m3u", ".m3u8", ".pls", ".mpd"))
+    host = (where.hostname or "").lower()
+    return where.scheme in ("http", "https") and any(host == s or host.endswith("." + s) for s in SITES)
 
 
 def mpv_options(core):
