@@ -124,10 +124,12 @@ def view_graph(rotate, frame, w, h, tag=""):
         head.append(f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}")
     if frame != "blur":
         return ",".join(head)
-    # the background: a small copy blurred and blown up (cheap enough to play), the picture over it
+    # the background: a small copy blurred and blown up (cheap enough to play), the picture over it.
+    # boxblur takes nv12 and p010, the frames of hardware decoding, but blurs their joint colour plane
+    # as if it were one: half the background comes out green (ffmpeg 8.1). Planar frames go to it.
     a, b, bg, fg = (f"[{x}{tag}]" for x in ("a", "b", "bg", "fg"))
     blur = (f"split{a}{b};{a}scale={w // 4}:{h // 4}:force_original_aspect_ratio=increase,crop={w // 4}:{h // 4},"
-            f"boxblur=10:2,scale={w}:{h}{bg};{b}scale={w}:{h}:force_original_aspect_ratio=decrease{fg};"
+            f"format=yuv420p|yuv422p|yuv444p|yuv420p10le|yuv422p10le|yuv444p10le,boxblur=10:2,scale={w}:{h}{bg};{b}scale={w}:{h}:force_original_aspect_ratio=decrease{fg};"
             f"{bg}{fg}overlay=(W-w)/2:(H-h)/2")
     return ",".join(head + [blur])
 
