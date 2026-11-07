@@ -5,6 +5,14 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 
 ## [Unreleased]
 
+### Added
+- If OY Player closed unexpectedly, the next start says so once, in a small card over the picture: «Report» opens a new GitHub issue already filled with the player's version, the Windows build and the error's line (no folders, no user name, no names of your videos), and «Open the log folder» shows the logs to attach. Native crashes are written to `last-crash.log` and the log of that run is kept as `oyplayer.previous.log`, both in `%LOCALAPPDATA%\OYPlayer`. Python errors go into the log with their trace.
+- Issue forms for bug reports and feature requests, and a security policy: security problems are reported privately through GitHub.
+
+### Changed
+- Settings › About: «Project page» opens the player's page on the developer's site, «Source code» the GitHub repository, and «Support the developer» the site's ways to say thanks (the old «Thank» key went to a section of GitHub that does not exist).
+- Installed apps link to the developer's site, the issues and the releases.
+
 ## [0.15.0] - 2026-11-07
 
 ### Added

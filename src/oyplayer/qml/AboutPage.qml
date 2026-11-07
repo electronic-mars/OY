@@ -1,16 +1,18 @@
 import QtQuick
 
 // About (the settings' last section): what this is, which version, where it keeps its things,
-// the update, and the way to the site and to thanking the author. The owner's pick of Argon's
+// the update, and the way to the project's page, its source and to thanking the author. The owner's pick of Argon's
 // variants (03.11): a card in a frame of the accent, the play key itself as the program's mark.
 Column {
     id: about
     readonly property real availableWidth: width - 2 * padding
     property real padding: 18
-    // the project's page; the thanks lead to its support section until there is a page of their own
-    readonly property string site: "https://github.com/electronic-mars/OY"
+    // the player's section on the developer's site, the source, the site's «Ways to say thanks»
+    readonly property string project: "https://electronic-mars.github.io/#oy-player"
+    readonly property string source: "https://github.com/electronic-mars/OY"
+    readonly property string support: "https://electronic-mars.github.io/#support"
     spacing: 10
-    // the site and the thanks, each on its own line as the update is: a sentence, its key
+    // the page, the source and the thanks, each on its own line as the update is: a sentence, its key
     component LinkRow: Row {
         property alias hint: hintText.text
         property alias keyText: keyButton.text
@@ -101,10 +103,12 @@ Column {
             Rectangle { width: parent.width * updater.percent / 100; height: parent.height; radius: 1.5; color: Theme.acc }
         }
         Rectangle { width: about.availableWidth; height: 1; color: Theme.accA(.35) }
-        LinkRow { hint: L.t.about_site_h; keyName: "aboutSite"; keyText: L.t.about_site
-                  onClicked: Qt.openUrlExternally(about.site) }
-        LinkRow { hint: L.t.about_thanks_h; keyName: "aboutThanks"; keyText: L.t.about_thanks; accent: true
-                  onClicked: Qt.openUrlExternally(about.site + "#support") }
+        LinkRow { hint: L.t.about_project_h; keyName: "aboutProject"; keyText: L.t.about_project
+                  onClicked: app.openLink(about.project) }
+        LinkRow { hint: L.t.about_source_h; keyName: "aboutSource"; keyText: L.t.about_source
+                  onClicked: app.openLink(about.source) }
+        LinkRow { hint: L.t.about_support_h; keyName: "aboutSupport"; keyText: L.t.about_support; accent: true
+                  onClicked: app.openLink(about.support) }
     }
     Item { width: 1; height: about.padding - about.spacing }
 }

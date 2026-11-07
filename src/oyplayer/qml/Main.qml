@@ -655,6 +655,11 @@ Window {
         anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: win.panelH + 12 }
     }
 
+    CrashCard {
+        z: 6
+        anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: win.panelH + 12 }
+    }
+
     DrawBar {
         id: drawBar
         objectName: "drawBar"

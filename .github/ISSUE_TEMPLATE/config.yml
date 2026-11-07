@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: OY Player on the developer's site
+    url: https://electronic-mars.github.io/#oy-player
+    about: What the player does, screenshots and the download.
+  - name: Ways to say thanks
+    url: https://electronic-mars.github.io/#support
+    about: If the player saved you some time.
+  - name: A security problem
+    url: https://github.com/electronic-mars/OY/security/advisories/new
+    about: Report it privately, not as a public issue.

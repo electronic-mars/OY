@@ -488,6 +488,7 @@ class SelfTest(QObject):
             "skins": self.skins_steps,     # sealed skins: each drawn in the real window, the default back
             "shot": self.shot_steps,     # the screenshot: its name and folder; the screenshot editor
             "rv1": self.rv1_steps,     # code review 1 (05.11): the curtain, network folders, an edit's border, one player, the session's end
+            "report": self.rp_steps,     # the site and the thanks in About; a crash's trace and the card after it
         }
         # tests\next-run-focus (used up like next-run-exe): the quick part and only the blocks it
         # names; empty, the quick part alone. Without it, everything.
@@ -5121,3 +5122,217 @@ class SelfTest(QObject):
                    "where the film was is kept",
                    self.end_wins > 0 and pos is not None and pos > 31.0,
                    f"windows told={self.end_wins} kept={pos} (resumed at 30.0)")
+
+    # ---- reports (06.11): the site and the thanks in About; a crash leaves a trace, and the next
+    # start says so once, calmly, with a report that carries no paths and no names
+    def rp_steps(self):
+        return [
+            (0, self.s_rp_parts), (0, self.s_rp_hook), (300, self.s_rp_hook_chk),
+            # a player goes down (a native crash; the built program: killed), the next one says so
+            (0, self.s_rp_crash), (0, self.until(lambda: self.rp_proc.poll() is not None, 30, 200)),
+            (0, self.s_rp_crash_files), (0, self.s_rp_again),
+            (500, self.until(lambda: "crash card" in self.rp_log(), 25, 200)), (1000, self.s_rp_again_chk),
+            # Windows ending the session is not a crash
+            (0, self.s_rp_end), (0, self.until(lambda: self.rp_proc.poll() is not None, 10, 100)),
+            (0, self.s_rp_end_chk),
+            # the card in this window, in English and in a long language, and its two keys
+            (0, lambda: self.m8["info"].setProperty("crashLine", self.rp_line)), (600, self.s_rp_card),
+            (0, lambda: self.settings.set("lang", "de")), (900, lambda: self.rp_card_whole("de")),
+            (0, lambda: self.settings.set("lang", "en")), (600, self.s_rp_card_keys), (500, self.s_rp_card_gone),
+            # About: the project's page, the source, the thanks
+            (0, self.s_about), (700, self.s_rp_about), (0, lambda: self.settings.set("lang", "de")),
+            (900, lambda: self.rp_about_whole("de")), (0, lambda: self.settings.set("lang", "en")),
+            (300, lambda: self.key("Esc")),
+        ]
+
+    def rp_cut(self, root):
+        """What does not show whole inside root: a cut or elided text, a part outside it."""
+        bad = []
+        top = root.mapToScene(QPointF(0, 0))
+        box = QRect(int(top.x()) - 1, int(top.y()) - 1, int(root.width()) + 2, int(root.height()) + 2)
+
+        def walk(item):
+            for child in item.childItems():
+                kind = child.metaObject().className()
+                if not child.isVisible() or child.width() <= 0 or kind.startswith("SoftShadow"):
+                    continue
+                name = child.objectName() or kind
+                if kind.startswith("QQuickText"):
+                    # contentWidth: a wrapped text's widest line, an unwrapped one's whole width
+                    if child.property("truncated") or child.property("contentWidth") > child.width() + 1:
+                        bad.append(f"{name} cut: {child.property('text')!r}")
+                p = child.mapToScene(QPointF(0, 0))
+                r = QRect(int(p.x()), int(p.y()), int(child.width()), int(child.height()))
+                if not box.contains(r):
+                    bad.append(f"{name} outside {r.getRect()} of {box.getRect()}")
+                walk(child)
+        walk(root)
+        return bad
+
+    def rp_log(self):
+        try:
+            return (self.rp_home / "oyplayer.log").read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return ""
+
+    def s_rp_parts(self):
+        from . import __version__, crash
+        user = os.environ.get("USERNAME", "someone")
+        native = ("Windows fatal exception: access violation\n\n"
+                  "Current thread 0x00008f50 (most recent call first):\n"
+                  f'  File "C:\\Users\\{user}\\AppData\\Local\\Programs\\OY Player\\_internal\\oyplayer\\player.py", line 812 in _on_end\n'
+                  '  File "C:\\Python314\\Lib\\threading.py", line 1012 in run\n')
+        got = crash.native_line(native)
+        self.check("a native crash is one line: the exception and the frame it hit, the file's name without its folder",
+                   got == "Windows fatal exception: access violation (_on_end, player.py:812)", repr(got))
+        holiday = f"FileNotFoundError: [Errno 2] No such file: C:\\Users\\{user}\\Videos\\Holiday 2025.mkv"
+        quoted = f"KeyError: 'D:\\Films\\{user} wedding.mkv' and \"Holiday.mkv\" at http://nas.local/x"
+        lines = [crash.scrub(holiday), crash.scrub(quoted)]
+        leak = [ln for ln in lines if any(w in ln.lower() for w in (user.lower(), "holiday", "wedding", "films", ":\\", "nas.local"))]
+        self.check("an error's line for a report keeps no path, user name, video name or address",
+                   not leak and lines[0].startswith("FileNotFoundError: [Errno 2] No such file:")
+                   and lines[1].startswith("KeyError:"), repr(lines))
+        self.rp_line = got
+        url = crash.report_url(lines[0])
+        from urllib.parse import parse_qs, urlsplit
+        q = {k: v[0] for k, v in parse_qs(urlsplit(url).query).items()}
+        v = sys.getwindowsversion()
+        self.check("Report opens a new issue on GitHub, its form filled: version, Windows build, the error's line",
+                   url.startswith("https://github.com/electronic-mars/OY/issues/new?")
+                   and q.get("template") == "bug_report.yml" and q.get("version") == __version__
+                   and str(v.build) in q.get("windows", "") and q.get("error") == lines[0]
+                   and user.lower() not in url.lower(), url)
+        form = Path(__file__).resolve().parents[2] / ".github" / "ISSUE_TEMPLATE" / "bug_report.yml"
+        if not getattr(sys, "frozen", False):        # the built program has no repository beside it
+            ids = re.findall(r"^\s+id:\s*(\S+)", form.read_text(encoding="utf-8"), re.M) if form.exists() else []
+            self.check("the bug form has the fields the report fills", {"version", "windows", "error"} <= set(ids), str(ids))
+
+    def s_rp_hook(self):
+        from . import crash
+        self.rp_marker = crash._state["marker"]
+        user = os.environ.get("USERNAME", "someone")
+        try:
+            open(f"C:\\Users\\{user}\\Videos\\Holiday 2025 selftest.mkv", "rb")
+        except OSError:
+            sys.excepthook(*sys.exc_info())
+        t = threading.Thread(target=lambda: 1 / 0, name="rp-selftest")
+        t.start()
+        t.join()
+
+    def s_rp_hook_chk(self):
+        text = (Path(os.environ["OY_HOME"]) / "oyplayer.log").read_text(encoding="utf-8", errors="replace")
+        kept = self.rp_marker.read_text(encoding="utf-8") if self.rp_marker else ""
+        self.check("a Python error, in the main thread or another, goes into the log with its trace",
+                   "uncaught FileNotFoundError" in text and "uncaught ZeroDivisionError" in text
+                   and "Traceback" in text, f"marker={self.rp_marker}")
+        self.check("and the last one's line is kept for the next start, without the path",
+                   kept.startswith("ZeroDivisionError") and "Holiday" not in kept, repr(kept))
+        if self.rp_marker:
+            self.rp_marker.write_text("", encoding="utf-8")
+
+    def s_rp_crash(self):
+        self.rp_home = self.rv1_home("home_crash")
+        if getattr(sys, "frozen", False):        # no Python to crash on purpose: the player is killed
+            self.rp_proc = self.rv1_player([], self.rp_home)
+            deadline = time.monotonic() + 25
+            while time.monotonic() < deadline and not any(_u32.IsWindowVisible(h) for h, _ in windows_of(self.rp_proc.pid)):
+                time.sleep(0.2)
+            terminate(self.rp_proc.pid)
+            return
+        code = ("import faulthandler, sys; sys.path.insert(0, sys.argv[1]); from oyplayer import crash, log; "
+                "crash.start(log.home()); faulthandler._sigsegv()")
+        self.rp_proc = subprocess.Popen([sys.executable, "-c", code, str(Path(__file__).resolve().parents[1])],
+                                        env=dict(os.environ, OY_HOME=str(self.rp_home)),
+                                        creationflags=subprocess.CREATE_NO_WINDOW)
+
+    def s_rp_crash_files(self):
+        # the venv's python.exe is a launcher: the player that went down is its child, a pid of its own
+        left = sorted(p.name for p in self.rp_home.iterdir())
+        marks = [n for n in left if n.startswith("running-")]
+        self.rp_crashed = marks[0][len("running-"):-len(".txt")] if len(marks) == 1 else "?"
+        self.check("a player that went down leaves its marks: running-<pid>.txt (and a native crash's trace)",
+                   f"running-{self.rp_crashed}.txt" in left
+                   and (getattr(sys, "frozen", False) or f"crash-{self.rp_crashed}.log" in left),
+                   f"pid={self.rp_crashed} files={left}")
+
+    def s_rp_again(self):
+        self.rp_proc = self.rv1_player([], self.rp_home)
+
+    def s_rp_again_chk(self):
+        text = self.rp_log()
+        frozen = getattr(sys, "frozen", False)
+        line = next((ln for ln in text.splitlines() if "crash card" in ln), "")
+        self.check("the next start shows the card once, with the line of what went wrong",
+                   "closed unexpectedly last time" in line and (frozen or "Segmentation fault" in line), line or text[-600:])
+        left = sorted(p.name for p in self.rp_home.iterdir())
+        self.check("the native trace is kept as last-crash.log, the gone player's marks are cleared",
+                   (frozen or "last-crash.log" in left)
+                   and not [n for n in left if n in (f"running-{self.rp_crashed}.txt", f"crash-{self.rp_crashed}.log")],
+                   str(left))
+
+    def s_rp_end(self):
+        wins, res = windows_of(self.rp_proc.pid), ctypes.c_size_t()
+        for msg, wp in ((WM_QUERYENDSESSION, 0), (WM_ENDSESSION, 1)):
+            for h, _pid in wins:
+                _u32.SendMessageTimeoutW(h, msg, wp, ENDSESSION_LOGOFF, SMTO_ABORTIFHUNG, 5000, ctypes.byref(res))
+        for pid in {pid for _h, pid in wins}:
+            terminate(pid)
+        self.rp_wins = len(wins)
+
+    def s_rp_end_chk(self):
+        left = sorted(p.name for p in self.rp_home.iterdir() if p.name.startswith(("running-", "crash-")))
+        self.check("Windows ending the session is not a crash: the player leaves no marks behind",
+                   self.rp_wins > 0 and not left, f"windows told={self.rp_wins} left={left}")
+
+    def s_rp_card(self):
+        card = self.find_item("crashCard")
+        self.check("the card: «closed unexpectedly last time», the line, Report and the log folder",
+                   card is not None and card.isVisible() and self.find_item("crashReport") is not None
+                   and self.find_item("crashFolder") is not None and self.find_item("crashClose") is not None)
+        self.shot("report_01_crash_card")
+        self.rp_card_whole("en")
+
+    def rp_card_whole(self, code):
+        card = self.find_item("crashCard")
+        bad = self.rp_cut(card) if card is not None else ["no card"]
+        self.check(f"every word on the card shows whole, inside it ({code})", not bad, "; ".join(bad))
+        if code != "en":
+            self.shot(f"report_02_crash_card_{code}")
+
+    def s_rp_card_keys(self):
+        self.m8["info"].opened.clear()
+        self.click_item(self.find_item("crashFolder"))
+        self.click_item(self.find_item("crashReport"))
+
+    def s_rp_card_gone(self):
+        from . import crash
+        from .log import home
+        opened = list(self.m8["info"].opened)
+        card = self.find_item("crashCard")
+        self.check("«Open the log folder» opens the log folder; Report opens the filled form and the card goes",
+                   len(opened) == 2 and opened[0] == QUrl.fromLocalFile(str(home())).toString()
+                   and opened[1] == crash.report_url(self.rp_line) and (card is None or not card.isVisible()),
+                   f"opened={opened} card={card is not None and card.isVisible()}")
+
+    def s_rp_about(self):
+        info = self.m8["info"]
+        info.opened.clear()
+        keys = [self.find_item(n) for n in ("aboutProject", "aboutSource", "aboutSupport")]
+        if all(keys):
+            for k in keys:
+                self.click_item(k)
+        want = ["https://electronic-mars.github.io/#oy-player", "https://github.com/electronic-mars/OY",
+                "https://electronic-mars.github.io/#support"]
+        self.check("About: the project's page, the source on GitHub, «Support the developer» to the site's thanks",
+                   all(keys) and list(info.opened) == want and keys[2].property("accent") is True
+                   and keys[2].property("text") == "Support the developer",
+                   f"keys={[k is not None for k in keys]} opened={list(info.opened)}")
+        self.shot("report_03_about")
+        self.rp_about_whole("en")
+
+    def rp_about_whole(self, code):
+        page = self.find_item("aboutPage")
+        bad = self.rp_cut(page) if page is not None else ["no page"]
+        self.check(f"every word in About shows whole, inside the page ({code})", not bad, "; ".join(bad))
+        if code != "en":
+            self.shot(f"report_04_about_{code}")

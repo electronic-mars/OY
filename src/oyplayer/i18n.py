@@ -172,7 +172,14 @@ EN = {
     "sch_in": "In %1 — %2", "sch_after_file": "After this file — %1", "sch_after_list": "When the list ends — %1",
     "osd_scheduler": "Scheduler: %1", "osd_cancelled": "Cancelled",
     # the window
-    "about": "About", "about_version": "version %1", "about_site": "Open the site", "about_site_h": "The project's page: news, releases and the source", "about_thanks": "Thank", "about_thanks_h": "Like the player? Thank its developer",
+    "about": "About", "about_version": "version %1",
+    "about_project": "Project page", "about_project_h": "What the player does, screenshots and the download",
+    "about_source": "Source code", "about_source_h": "The code and the bug reports, on GitHub",
+    "about_support": "Support the developer", "about_support_h": "Saved you some time? The site lists the ways to say thanks",
+    # the card after the last run went down (crash.py)
+    "crash_title": "OY Player closed unexpectedly last time",
+    "crash_text": "A report helps fix it. It holds the version, Windows and the error's line, nothing about your files.",
+    "crash_report": "Report", "crash_folder": "Open the log folder", "crash_close": "Close",
     "about_text": "A video player that edits the clip being watched. "
                   "Playback — libmpv, editing — FFmpeg, interface — Qt. Licence GPL v3.",
     "about_home": "Settings, history and playlist: %1",
@@ -552,7 +559,13 @@ UK = {
     "sch_in": "Через %1 — %2", "sch_after_file": "Після цього файлу — %1", "sch_after_list": "Коли список дограє — %1",
     "osd_scheduler": "Планувальник: %1", "osd_cancelled": "Скасовано",
     # the window
-    "about": "Про програму", "about_version": "версія %1", "about_site": "Відкрити сайт", "about_site_h": "Сторінка проєкту: новини, випуски й код", "about_thanks": "Подякувати", "about_thanks_h": "Подобається плеєр? Подякуйте розробнику",
+    "about": "Про програму", "about_version": "версія %1",
+    "about_project": "Сторінка проєкту", "about_project_h": "Що вміє плеєр, знімки екрана й завантаження",
+    "about_source": "Вихідний код", "about_source_h": "Код і повідомлення про помилки — на GitHub",
+    "about_support": "Підтримати розробника", "about_support_h": "Плеєр заощадив вам час? Способи подякувати — на сайті",
+    "crash_title": "Минулого разу OY Player несподівано закрився",
+    "crash_text": "Звіт допоможе це виправити. У ньому версія, Windows і рядок помилки — нічого про ваші файли.",
+    "crash_report": "Повідомити", "crash_folder": "Відкрити теку журналу", "crash_close": "Закрити",
     "about_text": "Відеоплеєр із монтажем ролика, який ви дивитеся. "
                   "Відтворення — libmpv, монтаж — FFmpeg, інтерфейс — Qt. Ліцензія GPL v3.",
     "about_home": "Налаштування, історія і плейлист: %1",

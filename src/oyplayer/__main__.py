@@ -27,7 +27,7 @@ os.environ["QT_D3D_NO_FLIP"] = "1"
 os.environ["QT_QUICK_CONTROLS_STYLE"] = "Basic"
 
 from PySide6.QtCore import Property, QObject, QStandardPaths, QUrl, Signal, Slot  # noqa: E402
-from PySide6.QtGui import QIcon  # noqa: E402
+from PySide6.QtGui import QDesktopServices, QIcon  # noqa: E402
 from PySide6.QtQml import QQmlApplicationEngine  # noqa: E402
 from PySide6.QtQuick import QQuickWindow, QSGRendererInterface  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402   (the tray icon is a widget)
@@ -46,6 +46,8 @@ class AppInfo(QObject):
         super().__init__()
         self._settings = settings
         self._selftest = selftest
+        self._crash = ""
+        self.opened = []
         settings.changed.connect(lambda _k: self.changed.emit())
 
     @Property(bool, constant=True)
@@ -99,6 +101,35 @@ class AppInfo(QObject):
     @Property(str, constant=True)
     def homeDir(self):
         return str(home())
+
+    # ---- the way out to the web and the log folder; a self-test only notes where it would go
+    @Slot(str)
+    def openLink(self, url):
+        if self._selftest:
+            self.opened.append(url)
+            log.info("self-test: not opened %s", url)
+        else:
+            QDesktopServices.openUrl(QUrl(url))
+
+    @Slot()
+    def openHome(self):
+        self.openLink(QUrl.fromLocalFile(str(home())).toString())
+
+    # ---- the last run went down: its line for the card, "" once the card has gone
+    crashChanged = Signal()
+
+    def _crash_line(self):
+        return self._crash
+
+    def _set_crash_line(self, line):
+        self._crash = line
+        self.crashChanged.emit()
+    crashLine = Property(str, _crash_line, _set_crash_line, notify=crashChanged)
+
+    @Property(str, notify=crashChanged)
+    def crashUrl(self):
+        from .crash import report_url
+        return report_url(self._crash)
 
     # ---- file types: only ever on the person's click in the settings
     @Property(bool, notify=changed)
@@ -165,6 +196,8 @@ def main(argv):
     # listening at once, not after mpv and the window: the other files opened with this one
     # (a process each) find it
     server = instance.Server()
+    from . import crash
+    crashed = crash.start(home())      # before the log is opened: the last run's log is kept
     log_path = setup()
     locale.setlocale(locale.LC_NUMERIC, "C")   # mpv parses numbers with the C locale
     app.setWindowIcon(QIcon(str(PKG / "oyplayer.ico")))
@@ -297,6 +330,9 @@ def main(argv):
         log.error("QML failed to load")
         return 1
     win = engine.rootObjects()[0]
+    if crashed:
+        log.info("crash card: closed unexpectedly last time: %s", crashed)
+        info.crashLine = crashed
     engine.load(QUrl.fromLocalFile(str(PKG / "qml" / "ShotWindow.qml")))
     shot_win = engine.rootObjects()[1]
     shot_win.setProperty("main", win)
@@ -383,6 +419,7 @@ def main(argv):
         player.saveSession()      # where the current file was left, its tracks and volume
         settings.set("volume", round(player.general_volume))
         flush_writes()            # settings, positions, history and the list are on the disk
+        crash.clean_exit()        # a way out of its own: nothing to tell on the next start
     app.aboutToQuit.connect(save_state)
 
     code = app.exec()

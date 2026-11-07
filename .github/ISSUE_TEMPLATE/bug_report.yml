@@ -1,0 +1,42 @@
+name: Bug report
+description: Something in OY Player does not work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time. The player keeps its log in `%LOCALAPPDATA%\OYPlayer`
+        (paste that into Explorer's address bar): `oyplayer.log` is this run, `oyplayer.previous.log`
+        the run that closed unexpectedly, `last-crash.log` its native crash trace. Attaching them
+        helps a lot. They may hold the names of files you played, so look them over first.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what the player did instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: OY Player version
+      description: Settings › About shows it.
+      placeholder: "0.15.0"
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows
+      placeholder: "Windows 11 (10.0.26100)"
+  - type: textarea
+    id: error
+    attributes:
+      label: The error's line
+      description: Filled in when you come from the player's «Report» key.
+      render: text
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+      description: The steps, and the kind of file if it matters (its format, not its name).
