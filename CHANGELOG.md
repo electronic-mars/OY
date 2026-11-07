@@ -5,6 +5,8 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-07
+
 ### Added
 - The interface in 39 languages, each listed by its own name: those Windows 11 is fully translated into, and Hindi, Indonesian, Vietnamese and Persian. The player starts in the one closest to Windows' own (Mexican Spanish in Latin American Spanish, Taiwanese Chinese in Traditional), and the settings' list holds the rest. Counts take each language's plural forms. Arabic, Persian and Hebrew mirror the window; the timeline and the keys under it keep running left to right. Every script is drawn in the Windows font made for it.
 - Setup speaks 25 of these languages, those Inno Setup has a translation for.
