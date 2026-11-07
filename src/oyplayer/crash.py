@@ -54,7 +54,8 @@ def scrub(text):
 
 def native_line(text):
     """faulthandler's report as one line: the last fatal exception and the frame it hit in."""
-    blocks = text.split("Windows fatal exception:")
+    # LuaJIT's own exceptions (0xe24c4aXX) are thrown and caught inside mpv: never the crash
+    blocks = [b for b in text.split("Windows fatal exception:") if not b.lstrip().startswith("code 0xe24c4a")]
     if len(blocks) < 2 and "Fatal Python error:" not in text:
         return ""
     if len(blocks) >= 2:
@@ -110,7 +111,11 @@ def start(home):
     _state["marker"] = home / f"running-{pid}.txt"
     _state["marker"].write_text("", encoding="utf-8")
     _state["native"] = open(home / f"crash-{pid}.log", "w", encoding="utf-8")
-    faulthandler.enable(_state["native"], all_threads=True)
+    # Only the thread that faults. On Windows faulthandler answers every error-class exception,
+    # caught ones too, and mpv's Lua scripts throw and catch LuaJIT's (0xe24c4a02) many times a
+    # second; walking the other threads' frames while they run, each time, itself crashed the
+    # player (measured: an access violation in the middle of such a dump, 1 run of the built exe in 3).
+    faulthandler.enable(_state["native"], all_threads=False)
     sys.excepthook = _hook
     threading.excepthook = lambda a: _hook(a.exc_type, a.exc_value, a.exc_traceback)
     return line

@@ -5185,6 +5185,10 @@ class SelfTest(QObject):
         got = crash.native_line(native)
         self.check("a native crash is one line: the exception and the frame it hit, the file's name without its folder",
                    got == "Windows fatal exception: access violation (_on_end, player.py:812)", repr(got))
+        lua = "Windows fatal exception: code 0xe24c4a02\n\nCurrent thread 0x00009e68 (most recent call first):\n  <no Python frame>\n"
+        mixed = [crash.native_line(lua + native + lua), crash.native_line(lua * 3)]
+        self.check("LuaJIT's caught exceptions inside mpv (0xe24c4a02) are never the crash's line",
+                   mixed == [got, ""], repr(mixed))
         holiday = f"FileNotFoundError: [Errno 2] No such file: C:\\Users\\{user}\\Videos\\Holiday 2025.mkv"
         quoted = f"KeyError: 'D:\\Films\\{user} wedding.mkv' and \"Holiday.mkv\" at http://nas.local/x"
         lines = [crash.scrub(holiday), crash.scrub(quoted)]
