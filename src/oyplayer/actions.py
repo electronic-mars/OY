@@ -4,6 +4,8 @@ call Actions.run(name), so a gesture can never reach a command by two paths.
 Keys are matched by Windows virtual-key code, not by the character typed, so they
 work the same under any layout, Cyrillic too (S stays S).
 """
+import os
+
 from PySide6.QtCore import Property, QEvent, QObject, Qt, Signal, Slot
 from PySide6.QtGui import QGuiApplication
 
@@ -19,6 +21,7 @@ VOLUME_STEP = 5.0
 # key string -> action. Modifier order is canonical: Ctrl+Alt+Shift+Key.
 DEFAULT_KEYS = {
     "F2": "open_file",
+    "Ctrl+V": "open_clipboard",
     "Space": "play_pause",
     "Alt+V": "stop",
     "Ctrl+X": "fast_play",
@@ -84,7 +87,7 @@ DEFAULT_KEYS = {
 
 # What the key editor shows, in the order a person looks for things (titles: i18n act_*).
 BINDABLE = (
-    "play_pause", "stop", "open_file", "seek_forward", "seek_backward", "jump_forward",
+    "play_pause", "stop", "open_file", "open_clipboard", "seek_forward", "seek_backward", "jump_forward",
     "jump_backward", "frame_forward", "frame_backward", "rewind", "fast_play", "volume_up",
     "volume_down", "mute", "fullscreen", "minimize", "on_top", "close", "settings", "next", "prev",
     "playlist", "add_files", "add_folder", "remove_selected", "playlist_remove", "clear_playlist",
@@ -192,6 +195,7 @@ class Actions(QObject):
         self.window = None    # set once QML has created it; window state is read from it
         self._table = {
             "open_file": self.openFileRequested.emit,
+            "open_clipboard": self._open_clipboard,
             "play_pause": self._play_pause,
             "stop": self._stop,
             "fast_play": player.cycleFastPlay,
@@ -300,6 +304,20 @@ class Actions(QObject):
             "radio_record": radio.toggleRecording,
             "scheduler": self.schedulerRequested.emit,
         }
+
+    def _open_clipboard(self):
+        """Ctrl+V: files copied in Explorer, or an address (a YouTube link) or a path as text."""
+        data = QGuiApplication.clipboard().mimeData()
+        found = [u for u in (data.urls() if data and data.hasUrls() else []) if u.isLocalFile()]
+        if not found:
+            text = (data.text() if data else "").strip().strip('"')
+            if text and "\n" not in text and (text.lower().startswith(("http://", "https://"))
+                                              or os.path.exists(text)):
+                found = [text]
+        if found:
+            self.pl.add(found, True)
+        else:
+            self.p.osdMessage.emit(tr("osd_nothing_to_paste"))
 
     def _play_pause(self):
         # Nothing loaded: continue the list where it was left, or ask for a file. Right after a

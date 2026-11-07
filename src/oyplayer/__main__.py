@@ -109,7 +109,8 @@ class AppInfo(QObject):
     @Slot(bool, bool)
     def registerFileTypes(self, audio, openWindows=True):
         from . import assoc
-        assoc.register(notify=not self._selftest, audio=audio)
+        assoc.register(notify=not self._selftest, audio=audio,
+                       windows_icons=self._settings["fileIcons"] == "windows")
         self.changed.emit()
         if not openWindows:
             return
@@ -208,8 +209,15 @@ def main(argv):
                    log_handler=mpv_log, loglevel="warn")
     if selftest:
         core["ao"] = "null"   # test clips carry a test tone; a self-test must stay silent
+    from . import ytdl
+    ytdl.mpv_options(core)
+    web_video = ytdl.WebVideo()
     player = Player(core)
     playlist = Playlist(player)
+    playlist.gate = web_video.needs
+    web_video.readyToPlay.connect(lambda url: playlist.add([url], True))
+    if not selftest:
+        web_video.update_later()
     editor = Editor(player)
     autoskip = AutoSkip(player)
     radio = Radio(player)
@@ -266,6 +274,7 @@ def main(argv):
     ctx.setContextProperty("app", info)
     ctx.setContextProperty("settings", settings)
     ctx.setContextProperty("editor", editor)
+    ctx.setContextProperty("webVideo", web_video)
     ctx.setContextProperty("shot", shot)
     ctx.setContextProperty("preview", preview)
     ctx.setContextProperty("autoskip", autoskip)
@@ -335,8 +344,12 @@ def main(argv):
             if new and together["at"] is not None:
                 open_together(True)
             return
-        # a second start: its files play here, and the window comes forward (from the tray too)
+        # a second start: its files play here, and the window comes forward (from the tray too).
+        # A file opened from Explorer is to be watched: the editor steps aside (its pieces stay,
+        # Ctrl+E brings them back), or the clip just saved would open into the edit again.
         if more:
+            if editor.active:
+                editor.close()
             playlist.add(more, True)
         tray.showWindow()
     server.filesReceived.connect(handed_over)

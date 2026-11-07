@@ -9,6 +9,12 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 - The interface in 39 languages, each listed by its own name: those Windows 11 is fully translated into, and Hindi, Indonesian, Vietnamese and Persian. The player starts in the one closest to Windows' own (Mexican Spanish in Latin American Spanish, Taiwanese Chinese in Traditional), and the settings' list holds the rest. Counts take each language's plural forms. Arabic, Persian and Hebrew mirror the window; the timeline and the keys under it keep running left to right. Every script is drawn in the Windows font made for it.
 - Setup speaks 25 of these languages, those Inno Setup has a translation for.
 - Audio and subtitle tracks in the interface's language come first, then English, in every language (it was Ukrainian or English only).
+- YouTube and the other sites yt-dlp knows: drop a link on the window or copy it and press Ctrl+V. The first time, the player asks to download yt-dlp and Deno from their GitHub releases (about 65 MB), checks each against its published SHA-256 and plays the link; yt-dlp then updates itself once a week.
+- Ctrl+V also opens a file copied in Explorer, or a copied path.
+- Settings › General › File icons: the files OY Player opens can keep Windows' own video and sound icons, with the player's key in the corner. Sound files are offered as their own type, with their own icon.
+
+### Changed
+- A file opened from Explorer while the editor is open plays in the player: the clip just saved no longer opens straight into the edit. The edit stays, and Ctrl+E brings it back.
 
 ### Fixed
 - Going full screen could leave a still picture of the whole monitor over everything until the player was closed, when Windows' call that sends the taskbar back failed. The still picture now always goes, within half a second at most.

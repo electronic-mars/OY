@@ -452,6 +452,8 @@ class SelfTest(QObject):
             # one player: a second start hands its file to this one and leaves
             (0, self.s_inst_send), (500, self.until(lambda: self.inst_proc.poll() is not None, 20, 200)),
             (1500, self.s_inst_done),
+            # web pages: yt-dlp is asked for, not found missing; Ctrl+V opens a copied path
+            (0, self.s_web_open), (500, self.s_web_asked), (400, self.s_web_dismissed), (1200, self.s_web_pasted),
             # the notification-area icon: minimising hides into it, a click brings the window back
             (0, self.s_tray_on), (700, self.s_tray_shown), (0, key("End")), (900, self.s_tray_hidden),
             (900, self.s_tray_back), (500, self.s_tray_middle), (500, self.s_media_prep),
@@ -459,7 +461,7 @@ class SelfTest(QObject):
             (0, key("MediaPlay")), (500, self.s_media_local), (0, self.s_media_global), (500, self.s_media_global_chk),
             # file types: only by the settings' button, here into a scratch registry key
             (0, self.s_assoc_prep), (700, self.s_assoc_nav), (700, self.s_assoc_shot), (300, self.s_assoc_on),
-            (700, self.s_assoc_registered), (500, self.s_assoc_removed),
+            (700, self.s_assoc_registered), (300, self.s_assoc_icons), (500, self.s_assoc_removed),
             (0, lambda: self.settings_page(0, "setSeries")), (900, lambda: self.shot("m8_10_settings_playback")),
             (0, lambda: self.settings_page(3, "setRadioDir")), (900, lambda: self.shot("m8_11_settings_radio")),
             (0, lambda: self.settings_page(5, "setGlobalMedia")), (900, lambda: self.shot("m8_12_settings_keys")),
@@ -1934,6 +1936,12 @@ class SelfTest(QObject):
             cmd, cwd = [sys.executable, "-m", "oyplayer", self.handed], str(Path(__file__).resolve().parents[1])
         # should it fail to hand over, its own window must not disturb either
         env = dict(os.environ, OY_SCREEN="3")
+        # the clip just saved, opened from Explorer while editing: it is to be watched
+        # (the mode alone: toggle() would put the test station playing now into the edit, and
+        # reading its keyframes holds up the editor's later saves for 30 s)
+        self.ed._active = True
+        self.ed.changed.emit()
+        self.inst_edit = self.ed.active
         self.inst_t0 = time.monotonic()
         self.inst_proc = subprocess.Popen(cmd, cwd=cwd, env=env, creationflags=subprocess.CREATE_NO_WINDOW)
 
@@ -1949,6 +1957,35 @@ class SelfTest(QObject):
                    code == 0 and playing and Path(playing).resolve() == Path(self.handed)
                    and "placed on" in own_log.splitlines()[0],
                    f"exit={code} after about {took:.1f} s, playing {Path(playing).name}")
+        self.check("a file opened from Explorer while editing plays in the player, not the editor",
+                   self.inst_edit and not self.ed.active, f"editing before={self.inst_edit} after={self.ed.active}")
+
+    def s_web_open(self):
+        # the test home has no yt-dlp: a YouTube link waits for the person's word, a stream does not
+        self.web_rows = self.pl.count
+        self.pl.add(["https://www.youtube.com/watch?v=aqz-KE-bpKQ"], False)
+
+    def s_web_asked(self):
+        card = self.find_item("webCard")
+        self.check("a YouTube link without yt-dlp asks to download it, and waits out of the list",
+                   card is not None and card.isVisible() and self.pl.count == self.web_rows
+                   and self.find_item("webFetch").isVisible(),
+                   f"card={card is not None and card.isVisible()} rows {self.web_rows}->{self.pl.count}")
+        self.key("Esc")
+
+    def s_web_dismissed(self):
+        card = self.find_item("webCard")
+        self.check("Esc puts the question away", not card.isVisible(), f"visible={card.isVisible()}")
+        cb = QGuiApplication.clipboard()
+        self.clip_saved = cb.text()
+        cb.setText(self.handed)
+        self.a.run("open_clipboard")
+
+    def s_web_pasted(self):
+        playing = self.st("path") or ""
+        QGuiApplication.clipboard().setText(self.clip_saved)
+        self.check("Ctrl+V opens a file whose path was copied", playing and Path(playing).resolve() == Path(self.handed),
+                   f"playing {Path(playing).name}")
 
     def s_tray_on(self):
         self.settings.set("tray", "minimize")
@@ -2041,6 +2078,24 @@ class SelfTest(QObject):
                    and self.m8["info"].fileTypes is True,
                    f"types={len(fa)} command={cmd.get('', '')[:60]}")
         self.shot("m8_09_settings_registered")
+        self.settings.set("fileIcons", "windows")
+        self.m8["info"].registerFileTypes(True, False)
+
+    def s_assoc_icons(self):
+        a = self.assoc
+        icons = {pid: (reg_values(rf"{a.CLASSES}\{pid}\DefaultIcon") or {}).get("", "")
+                 for pid in ("OYPlayer.media", "OYPlayer.audio")}
+        sizes = {}
+        for pid, value in icons.items():
+            f = Path(value.split('"')[1]) if value.count('"') == 2 else None
+            data = f.read_bytes() if f and f.is_file() else b""
+            sizes[pid] = int.from_bytes(data[4:6], "little") if data[:4] == b"\0\0\1\0" else 0
+        fa = reg_values(rf"{a.APP_KEY}\Capabilities\FileAssociations") or {}
+        self.check("Windows' own file icons with the player's mark: a video and a sound icon, each in all sizes",
+                   all(n == len(a.ICON_SIZES) for n in sizes.values()) and icons["OYPlayer.media"] != icons["OYPlayer.audio"]
+                   and fa.get(".mp4") == "OYPlayer.media" and fa.get(".mp3") == "OYPlayer.audio",
+                   f"icons={icons} sizes={sizes} mp3={fa.get('.mp3')}")
+        self.settings.set("fileIcons", "player")
         self.click_item(self.find_item("setAssocOff"))
 
     def s_assoc_removed(self):

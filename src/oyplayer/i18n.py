@@ -19,6 +19,7 @@ EN = {
     "dec": ".", "sec": "s",
     # commands (the key editor, the tray)
     "act_play_pause": "Play / pause", "act_stop": "Stop", "act_open_file": "Open file",
+    "act_open_clipboard": "Open a copied link or file",
     "act_seek_forward": "Seek forward", "act_seek_backward": "Seek backward",
     "act_jump_forward": "Jump forward", "act_jump_backward": "Jump backward",
     "act_frame_forward": "Next frame", "act_frame_backward": "Previous frame", "act_rewind": "To the start",
@@ -69,7 +70,7 @@ EN = {
     "act_scheduler": "Scheduler",
     "tray_show": "Show / hide", "tray_next": "Next", "tray_prev": "Previous", "tray_exit": "Exit",
     # file types in Windows
-    "assoc_media": "Video or audio — OY Player", "assoc_radio": "Radio station — OY Player",
+    "assoc_media": "Video — OY Player", "assoc_audio": "Audio — OY Player", "assoc_radio": "Radio station — OY Player",
     "assoc_desc": "OY Player video player",
     # skipping openings and credits
     "osd_opening_skipped": "Opening skipped", "osd_credits_skipped": "Credits skipped",
@@ -157,6 +158,12 @@ EN = {
     "osd_shuffle_on": "Shuffle on", "osd_shuffle_off": "Shuffle off",
     # radio
     "osd_need_url": "A stream address like http://… is needed",
+    "osd_nothing_to_paste": "Copy a link or a file first, then press Ctrl+V",
+    "web_ask": "OY Player plays YouTube and other sites through yt-dlp and Deno, two free programs. "
+               "They are downloaded once from their GitHub pages (about 65 MB) and keep up to date by themselves.",
+    "web_download": "Download and play", "web_not_now": "Not now", "web_retry": "Try again",
+    "web_fetching": "Downloading yt-dlp and Deno… %1 %",
+    "web_failed": "The download did not finish: %1",
     "osd_rec_only": "Recording is only for radio and streams",
     "osd_rec_started": "Recording started", "osd_rec_saved": "Recording saved",
     # the scheduler
@@ -327,6 +334,8 @@ EN = {
     "c_default": "DEFAULT PLAYER",
     "s_types": "Open video in OY Player",
     "s_assoc_audio": "Sound files too", "s_assoc_audio_h": "Music and other sound files open in OY Player as well",
+    "s_file_icons": "File icons", "s_file_icons_h": "How the files OY Player opens look in Explorer",
+    "o_icons_player": "The player's", "o_icons_windows": "Windows' with the player's mark",
     "reset_section": "Defaults", "reset_again": "Press again",
     "reset_section_tip": "Puts this section's settings back as they were at install",
     "s_left": "Click on the video", "s_left_h": "Hidden panels come back with the next click",
@@ -388,6 +397,7 @@ UK = {
     "dec": ",", "sec": "с",
     # commands (the key editor, the tray)
     "act_play_pause": "Відтворення / пауза", "act_stop": "Стоп", "act_open_file": "Відкрити файл",
+    "act_open_clipboard": "Відкрити скопійоване посилання чи файл",
     "act_seek_forward": "Перемотка вперед", "act_seek_backward": "Перемотка назад",
     "act_jump_forward": "Стрибок уперед", "act_jump_backward": "Стрибок назад",
     "act_frame_forward": "Кадр уперед", "act_frame_backward": "Кадр назад", "act_rewind": "На початок",
@@ -439,7 +449,7 @@ UK = {
     "act_scheduler": "Планувальник",
     "tray_show": "Показати / сховати", "tray_next": "Наступний", "tray_prev": "Попередній", "tray_exit": "Вихід",
     # file types in Windows
-    "assoc_media": "Відео або звук — OY Player", "assoc_radio": "Радіостанція — OY Player",
+    "assoc_media": "Відео — OY Player", "assoc_audio": "Звук — OY Player", "assoc_radio": "Радіостанція — OY Player",
     "assoc_desc": "Відеоплеєр OY Player",
     # skipping openings and credits
     "osd_opening_skipped": "Заставку пропущено", "osd_credits_skipped": "Титри пропущено",
@@ -528,6 +538,12 @@ UK = {
     "osd_shuffle_on": "Перемішування увімкнено", "osd_shuffle_off": "Перемішування вимкнено",
     # radio
     "osd_need_url": "Потрібна адреса потоку на кшталт http://…",
+    "osd_nothing_to_paste": "Спершу скопіюйте посилання або файл, тоді натисніть Ctrl+V",
+    "web_ask": "OY Player відтворює YouTube та інші сайти через yt-dlp і Deno — дві безкоштовні програми. "
+               "Вони завантажуються один раз зі своїх сторінок на GitHub (близько 65 МБ) і далі оновлюються самі.",
+    "web_download": "Завантажити й відтворити", "web_not_now": "Не зараз", "web_retry": "Спробувати ще",
+    "web_fetching": "Завантажую yt-dlp і Deno… %1 %",
+    "web_failed": "Завантаження не вдалося: %1",
     "osd_rec_only": "Запис — лише для радіо й потоків",
     "osd_rec_started": "Запис почався", "osd_rec_saved": "Запис збережено",
     # the scheduler
@@ -702,6 +718,8 @@ UK = {
     "c_default": "ПЛЕЄР ЗА ЗАМОВЧУВАННЯМ",
     "s_types": "Відкривати відео в OY Player",
     "s_assoc_audio": "Також аудіофайли", "s_assoc_audio_h": "Музика й інші звукові файли теж відкриватимуться в OY Player",
+    "s_file_icons": "Значки файлів", "s_file_icons_h": "Як файли, що відкриває OY Player, виглядають у Провіднику",
+    "o_icons_player": "Плеєра", "o_icons_windows": "Windows зі знаком плеєра",
     "reset_section": "Типові значення", "reset_again": "Натисніть ще раз",
     "reset_section_tip": "Повертає налаштування цього розділу такими, як після встановлення",
     "s_left": "Клацання по відео", "s_left_h": "Сховані панелі повертаються наступним клацанням",

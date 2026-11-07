@@ -31,6 +31,7 @@ DEFAULTS = {
     "singleInstance": True,
     "tray": "off",               # off | on | minimize
     "assocAudio": False,         # offered to Windows for sound files too, not only video
+    "fileIcons": "player",       # player | windows: Windows' own file icons with the player's key
     "globalMedia": False,        # media keys reach the player from any program
     "updateCheck": True,         # once a day ask the release page whether a newer version is out
     # Radio

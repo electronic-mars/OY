@@ -176,6 +176,7 @@ Window {
                          "fullscreen", win.fs)
             if (win.popupOpen) win.popups.forEach(p => p.close())
             else if (scheduler.countdown > 0) scheduler.abort()
+            else if (webVideo.state === "asking" || webVideo.state === "failed") webVideo.dismiss()
             else if (win.uiHidden) win.uiHidden = false
             else if (win.fs) win.toggleFullscreen()
             else if (editor.active && win.drawTool !== "select") win.drawTool = "select"   // a drawing tool first
@@ -1087,6 +1088,46 @@ Window {
             }
             PillButton { objectName: "powerCancel"; anchors.verticalCenter: parent.verticalCenter
                          text: L.t.cd_cancel; accent: true; onClicked: scheduler.abort() }
+        }
+    }
+
+    // a web page (YouTube) was opened and yt-dlp is not here yet: the question, the download,
+    // or why it failed (ytdl.WebVideo)
+    Rectangle {
+        id: webCard
+        objectName: "webCard"
+        visible: webVideo.state !== "idle"
+        z: 10
+        anchors.horizontalCenter: videoArea.horizontalCenter
+        y: (win.bare ? 0 : win.titleH) + 54
+        width: Math.min(520, win.width - 40); height: webCol.implicitHeight + 32; radius: 12
+        color: Theme.card; border.color: Theme.acc
+        Rectangle { anchors.fill: parent; anchors.margins: -1; z: -1; radius: 13; color: Qt.rgba(0, 0, 0, .35) }
+        Column {
+            id: webCol
+            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+            anchors.margins: 16
+            spacing: 12
+            Text {
+                width: parent.width; wrapMode: Text.Wrap
+                text: webVideo.state === "failed" ? L.t.web_failed.arg(webVideo.reason)
+                      : webVideo.state === "fetching" ? L.t.web_fetching.arg(Math.round(webVideo.progress * 100))
+                      : L.t.web_ask
+                color: Theme.tx; font.family: Theme.uiFont; font.pixelSize: 14; lineHeight: 1.15
+            }
+            Rectangle {
+                visible: webVideo.state === "fetching"
+                width: parent.width; height: 4; radius: 2; color: Theme.accA(0.2)
+                Rectangle { width: parent.width * webVideo.progress; height: parent.height; radius: 2; color: Theme.acc }
+            }
+            Row {
+                spacing: 8
+                visible: webVideo.state !== "fetching"
+                PillButton { objectName: "webFetch"; accent: true
+                             text: webVideo.state === "failed" ? L.t.web_retry : L.t.web_download
+                             onClicked: webVideo.fetch() }
+                PillButton { objectName: "webDismiss"; text: L.t.web_not_now; onClicked: webVideo.dismiss() }
+            }
         }
     }
 

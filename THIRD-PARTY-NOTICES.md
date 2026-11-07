@@ -14,6 +14,8 @@ The program includes components by other authors. Below is what they are, the li
 | IBM Plex Mono: the font of the time scale, numbers and lengths (Regular and Medium, TTF unpacked from the WOFF files of the `@ibm/plex-mono` package) | 2.5.0 | SIL Open Font License 1.1. The licence text is in `_internal/oyplayer/fonts/LICENSE-IBMPlexMono.txt` | https://github.com/IBM/plex |
 | Lucide: interface icons, 46 SVG files (the Eject icon is drawn on their grid) | 0.460.0 | ISC. The licence text is in `_internal/oyplayer/icons/LICENSE` | https://github.com/lucide-icons/lucide |
 
+Not shipped, fetched on the person's word the first time a web page (YouTube) is opened, from their own GitHub releases, into `%LOCALAPPDATA%\OYPlayer\tools`: **yt-dlp** (`yt-dlp.exe`, the Unlicense, https://github.com/yt-dlp/yt-dlp) and **Deno** (`deno.exe`, MIT, https://github.com/denoland/deno).
+
 The Qt libraries are linked dynamically and can be replaced with your own builds of the same version: put them in the program's `_internal\PySide6` folder.
 
 If any of these addresses stops working, the source code can be requested from the author of OY Player through Issues at https://github.com/electronic-mars/OY.

@@ -127,6 +127,7 @@ class Playlist(QAbstractListModel):
         self.p = player
         self.adds = True            # setting "openAdds": opening adds to the list
         self.series = True          # setting "series": an opened episode brings the next ones
+        self.gate = None            # path -> True when it must wait (a web page before yt-dlp)
         self.items = []            # dicts: path, title, duration
         self._current = -1
         self._repeat = REPEAT_OFF
@@ -213,6 +214,10 @@ class Playlist(QAbstractListModel):
     def add(self, urls, play=True):
         """Files go in at once; a folder's files follow when the reading thread has them."""
         paths = [to_path(u) for u in urls]
+        if self.gate:       # a web page waits while yt-dlp is fetched (ytdl.WebVideo.needs)
+            paths = [p for p in paths if not self.gate(p)]
+            if not paths:
+                return
         if all(named_file(p) for p in paths):
             self._insert(paths, play)
         else:

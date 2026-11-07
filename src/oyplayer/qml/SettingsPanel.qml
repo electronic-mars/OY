@@ -274,6 +274,12 @@ Popup {
                                      Toggle { objectName: "setAssocAudio"; checked: sp.v.assocAudio
                                               onToggled: (on) => { settings.set("assocAudio", on)
                                                                    if (app.fileTypes) app.registerFileTypes(on, false) } } }
+                        SettingRow { title: L.t.s_file_icons; below: true; hint: L.t.s_file_icons_h
+                                     Segmented { objectName: "setFileIcons"; width: 400; value: sp.v.fileIcons
+                                                 options: [{ value: "player", text: L.t.o_icons_player },
+                                                           { value: "windows", text: L.t.o_icons_windows }]
+                                                 onPicked: (x) => { settings.set("fileIcons", x)
+                                                                    if (app.fileTypes) app.registerFileTypes(sp.v.assocAudio, false) } } }
                     }
                 }
 
