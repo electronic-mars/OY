@@ -28,10 +28,6 @@ itself from test clips (`tools\selftest.cmd` with `tests\next-run-features`, see
 - **Opening.** Drag files or a folder onto the window, click the empty window, press **F2**, or
   copy a file in Explorer, a path or a web address and press **Ctrl+V**. With nothing loaded the
   Play key opens a file too; its right click always does.
-- **YouTube and other sites.** A link to a page that yt-dlp knows plays in the window. The first
-  time the player asks before downloading yt-dlp and Deno (about 65 MB) from their GitHub
-  releases, checks each against its published SHA-256, then yt-dlp updates itself once a week.
-  ![Asking before yt-dlp is downloaded](screenshots/web-link-ask.png)
 - **Play and pause** — **Space** or a click on the picture (Settings › Controls can make the click
   hide the panels instead, or do nothing). **Stop** — **Alt+V** (pause and back to the start).
   **To the start** — **Backspace**.
@@ -279,9 +275,9 @@ be moved by its top strip.
 
 ![Settings › About](screenshots/settings-about.png)
 
-- **No account, no telemetry.** The player itself goes online for three things only: the daily
-  look for a new version, YouTube-style links (after you agree to download yt-dlp and Deno, and
-  their weekly self-update), and the streams you open.
+- **No account, no telemetry.** The player itself goes online only for the daily look for a new
+  version and for the streams and links you open, and downloads nothing else without asking
+  first.
 - **Updates**: once a day the player asks its GitHub release page whether a newer version is out
   and lights the About section (Settings › General › «Look for updates» turns this off). Nothing
   installs until you press «Update and restart»; the installer must carry the release key's
