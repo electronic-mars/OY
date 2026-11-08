@@ -3,7 +3,7 @@
     python tools/make-readme-gifs.py [--story DIR] [--only NAME ...]
 
 Sources (not in the repository):
-  local/marketing/video/clip5-draw-16x9.mp4   drawing over a video in the real window, 1920x1080
+  local/marketing/video/bb-*.mp4              screen recordings of the real window
   local/marketing/stills/*.png                window stills made by showcase.py
   <story>/OY-launch-full-story.mp4            the launch cartoon, 1280x720, ends on the title
 
@@ -18,25 +18,24 @@ import numpy as np
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
-CLIP5 = ROOT / "local/marketing/video/clip5-draw-16x9.mp4"
+# local/ is git-ignored, so a worktree has none: read it from the main checkout.
+VIDEO = Path("D:/Documents/Claude/Projects/kr4P/local/marketing/video")
 STILLS = ROOT / "local/marketing/stills"
 STORY_DIR = Path(r"D:\Documents\ClaudeScripts\gemini-out\oy-launch")
 DEMO = ROOT / "docs/demo"
 SHOTS = ROOT / "docs/screenshots"
 
-# The player's window inside clip5 (the rest is the caption above it and the backdrop).
-WINDOW = (1216, 924, 352, 142)
-
-# source, start s, source length s, speed, crop, width, fps, colours, dither, still, hold s at end
+# source file in VIDEO, start s, source length s, speed, crop, width, fps, colours, dither, still, hold s at end
 #   dither: Bayer amplitude in 0..255 levels (0 = none)
 #   still:  a pixel is redrawn only if it moved more than this from what the GIF shows
 GIFS = {
-    # the caption is typed, then playback: each drawing leaves at its own time
-    "hero": ("clip5", 12.5, 5.5, 1.0, WINDOW, 900, 12, 256, 6, 10, 0.0),
-    # a box, an arrow and a caption drawn over the paused picture
-    "draw": ("clip5", 2.5, 12.0, 1.3, WINDOW, 900, 12, 256, 6, 10, 0.8),
-    # the cartoon: the flight to Saturn and the title card
-    "launch": ("story", 14.0, 8.83, 1.0, None, 800, 12, 128, 10, 8, 1.5),
+    # The film footage changes every pixel, so these two get fewer frames, colours and a higher threshold.
+    # drop a file, seek with the frame preview, 2x speed, a timer, Japanese subtitles
+    "plays": ("bb-plays-16x9.mp4", 0.0, 15.0, 1.0, None, 860, 7, 96, 6, 26, 1.0),
+    # Ctrl+E, cut the start and the end, a circle, an arrow, a caption, save
+    "edit": ("bb-edit2.mp4", 0.0, 15.0, 1.0, None, 900, 10, 256, 6, 10, 1.0),
+    # two annotated screenshots of a frame, from two films
+    "shot": ("bb-shot2.mp4", 0.0, 15.6, 1.0, None, 860, 7, 96, 6, 26, 1.0),
 }
 
 # README stills: published name -> source file, optional crop box (left, top, right, bottom)
@@ -64,7 +63,7 @@ def size_of(clip: Path) -> tuple[int, int]:
     return int(w), int(h)
 
 
-def make_gif(name: str, story: Path) -> Path:
+def make_gif(name: str) -> Path:
     """ffmpeg cuts and scales; the GIF itself is written here.
 
     The sources are compressed video, so every pixel flickers a little from
@@ -75,7 +74,7 @@ def make_gif(name: str, story: Path) -> Path:
     still area identical between frames, unlike error diffusion.
     """
     src, start, length, speed, crop, width, fps, colours, dither, still, hold = GIFS[name]
-    clip = CLIP5 if src == "clip5" else story / "OY-launch-full-story.mp4"
+    clip = VIDEO / src
     cw, ch = crop[:2] if crop else size_of(clip)
     height = round(width * ch / cw / 2) * 2
     chain = [f"crop={cw}:{ch}:{crop[2]}:{crop[3]}"] if crop else []
@@ -108,10 +107,13 @@ def make_gif(name: str, story: Path) -> Path:
     for n, f in enumerate(frames):
         q = np.clip(f + offset, 0, 255).astype(np.int32) >> 3
         idx = lut[(q[..., 0] << 10) | (q[..., 1] << 5) | q[..., 2]]
-        if shown is None or n == len(frames) - 1:  # the last frame is drawn whole: a fade
-            shown, out = f, idx                     # leaves no stale patches on the held card
-        else:  # compare with the source as it was when last drawn, not with its palette colour
-            moved = np.abs(f - shown).max(-1) > still
+        # compare with the source as it was when last drawn, not with its palette colour
+        moved = None if shown is None else np.abs(f - shown).max(-1) > still
+        # The first and last frames and every cut (most of the picture moved) are drawn whole:
+        # a fade or a sliding window leaves no stale patches below the threshold.
+        if moved is None or n == len(frames) - 1 or moved.mean() > 0.5:
+            shown, out = f, idx
+        else:
             out = np.where(moved, idx, keep).astype(np.uint8)
             shown = np.where(moved[..., None], f, shown)
         images.append(out)
@@ -159,7 +161,7 @@ def main() -> int:
     DEMO.mkdir(parents=True, exist_ok=True)
     SHOTS.mkdir(parents=True, exist_ok=True)
     want = set(a.only) if a.only else set(GIFS) | {"stills", "preview"}
-    made = [make_gif(n, a.story) for n in GIFS if n in want]
+    made = [make_gif(n) for n in GIFS if n in want]
     if "stills" in want:
         made += make_stills()
     if "preview" in want:

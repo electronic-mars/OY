@@ -4,7 +4,9 @@ A free video player for Windows 10 and 11 that also cuts and annotates.
 
 **[Download](https://github.com/electronic-mars/OY/releases/latest)** · [Website](https://electronic-mars.github.io/#oy-player) · [Ways to say thanks](https://electronic-mars.github.io/#support)
 
-![The OY Player editor over a cartoon of Mars and Saturn: the caption «Next stop: Saturn» is typed next to an orange box and arrow, then the video plays, each drawing leaves the picture at the end of its own time on the timeline, and a rocket lifts off for Saturn](docs/demo/hero.gif)
+![OY Player playing films: a file is dragged into the empty window and starts; seeking along the bar shows a frame of where you would land; a right-click on the speed button picks 2x; the timer is set to «In 30 minutes»; a right-click on the video opens Subtitles… and picks 日本語. The films behind are sped-up cuts of Tears of Steel and Big Buck Bunny](docs/demo/plays.gif)
+
+<sub>Tears of Steel and Big Buck Bunny © Blender Foundation, [mango.blender.org](https://mango.blender.org/) and [peach.blender.org](https://peach.blender.org/), licensed under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).</sub>
 
 > **Status:** stable release (see the latest version on the Releases page). The interface is in 39 languages (as Windows speaks, or chosen in the settings). See [CHANGELOG.md](CHANGELOG.md).
 
@@ -25,9 +27,11 @@ A free video player for Windows 10 and 11 that also cuts and annotates.
 | **A phone video becomes a widescreen one** | **A key for every command, and you can change any** |
 | ![The editor with an upright phone clip in a 16:9 frame over a blurred, enlarged copy of itself](docs/screenshots/frame-16x9.webp) | ![Settings › Controls › Keys: every command with its keys, each removable, and a plus to add another](docs/screenshots/keys.webp) |
 
-![Drawing over a paused video in the editor: an orange rectangle is dragged around two settlers, an arrow is drawn towards them, and the caption «Next stop: Saturn» is typed, each drawing getting its own track on the timeline](docs/demo/draw.gif)
+![Editing a cartoon of Mars and Saturn: Ctrl+E opens the editor, I cuts off the start, the playhead is scrolled back and forth along the timeline, O cuts off the end, then a yellow circle, a red arrow and the white caption «Next stop: Saturn» are drawn over the picture, each on its own track, and the clip is saved](docs/demo/edit.gif)
 
-![The OY Player launch cartoon: a rocket leaves the colony on Mars for Saturn's rings, and the picture fades to the title «OY Player — free for Windows»](docs/demo/launch.gif)
+![Screenshots of a frame: in Tears of Steel a frame is taken, an orange circle, a yellow arrow and the caption «Target locked» are drawn on it and it is saved and closed; the next file opens, and a frame of Big Buck Bunny gets a red box and the caption «Thumbnail: this one»](docs/demo/shot.gif)
+
+<sub>Tears of Steel and Big Buck Bunny © Blender Foundation, [mango.blender.org](https://mango.blender.org/) and [peach.blender.org](https://peach.blender.org/), licensed under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).</sub>
 
 **[Everything it does, with the key for each →](FEATURES.md)**
 
