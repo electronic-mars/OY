@@ -17,10 +17,11 @@ set by the player from the layout.
 import ctypes
 
 from PySide6.QtCore import QObject, Qt, Signal
-from PySide6.QtGui import QOffscreenSurface, QOpenGLContext
 from PySide6.QtQuick import QSGRendererInterface
 
 import mpv
+
+from . import wgl
 
 _opengl32 = ctypes.WinDLL("opengl32")
 _wglGetProcAddress = _opengl32.wglGetProcAddress
@@ -52,25 +53,6 @@ def _gl_fn(name, res, *args):
     return ctypes.WINFUNCTYPE(res, *args)(_get_proc_address(None, name.encode()))
 
 
-def dx_interop():
-    """Whether the video card's OpenGL can draw into Direct3D 11 textures. Needs a QGuiApplication."""
-    surface = QOffscreenSurface()
-    surface.create()
-    ctx = QOpenGLContext()
-    if not ctx.create() or not ctx.makeCurrent(surface):
-        return False
-    _opengl32.wglGetCurrentDC.restype = ctypes.c_void_p
-    ext = _gl_fn("wglGetExtensionsStringARB", ctypes.c_char_p, ctypes.c_void_p)
-    try:
-        found = b"WGL_NV_DX_interop2" in (ext(_opengl32.wglGetCurrentDC()) or b"").split()
-    except OSError:
-        # Qt's software OpenGL (no video card driver: a build server, a bare virtual machine) is
-        # not opengl32.dll's: the entry point found there is no function (measured: access violation)
-        found = False
-    ctx.doneCurrent()
-    return found
-
-
 H, U = ctypes.c_void_p, ctypes.c_uint
 GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D = 0x8D40, 0x8CE0, 0x0DE1
 WGL_ACCESS_WRITE_DISCARD_NV = 2
@@ -99,7 +81,10 @@ class _BOX(ctypes.Structure):
 class D3DUnderlay(QObject):
     """The Direct3D 11 window's underlay: mpv draws with its own OpenGL context into a Direct3D
     texture of the frame's size, copied into the frame before Qt Quick draws the UI. All of it
-    runs on the render thread (the GUI thread: the basic render loop)."""
+    runs on the render thread (the GUI thread: the basic render loop).
+
+    The window's first frame is the interface alone, and mpv's part is made for the second:
+    making it takes 150 ms, which the window would otherwise stand empty for."""
 
     ready = Signal()
     frameReady = Signal()
@@ -111,16 +96,14 @@ class D3DUnderlay(QObject):
         self._ctx = None
         self._tex = None        # (w, h, format, D3D texture, GL texture, interop handle)
         self._fbo = U(0)
-        self._surface = QOffscreenSurface()     # made on the GUI thread, as Qt requires
-        self._surface.create()
+        self._drawn = False     # the window has had its first frame
         self.frameReady.connect(window.update, Qt.QueuedConnection)
         window.beforeRenderPassRecording.connect(self._render, Qt.DirectConnection)
         window.sceneGraphInvalidated.connect(self._free, Qt.DirectConnection)
 
     def _init_ctx(self):
-        self._gl = QOpenGLContext()
-        self._gl.create()
-        self._gl.makeCurrent(self._surface)
+        self._gl = wgl.Context()
+        self._gl.make_current()
         f = self._f = {
             "open": _gl_fn("wglDXOpenDeviceNV", H, H),
             "close": _gl_fn("wglDXCloseDeviceNV", ctypes.c_int, H),
@@ -165,6 +148,10 @@ class D3DUnderlay(QObject):
         self._tex = (w, h, fmt, d3d.value, gltex.value, hobj)
 
     def _render(self):
+        if not self._drawn:
+            self._drawn = True
+            self.frameReady.emit()      # the second frame follows at once
+            return
         self._win.beginExternalCommands()
         if self._ctx is None:
             self._init_ctx()
@@ -178,7 +165,7 @@ class D3DUnderlay(QObject):
         _release(rtv.value)
         td = _TEX2D()
         _com(target.value, 10, None, ctypes.POINTER(_TEX2D))(target.value, ctypes.byref(td))         # GetDesc
-        self._gl.makeCurrent(self._surface)
+        self._gl.make_current()
         if not self._tex or self._tex[:3] != (td.w, td.h, td.fmt):
             self._texture(td.w, td.h, td.fmt)
         objs = (H * 1)(self._tex[5])
@@ -188,7 +175,7 @@ class D3DUnderlay(QObject):
         # a Direct3D texture's first row is the top: no flip
         self._ctx.render(flip_y=False, opengl_fbo={"w": td.w, "h": td.h, "fbo": self._fbo.value})
         self._f["unlock"](self._hdev, 1, objs)
-        self._gl.doneCurrent()
+        self._gl.done_current()
         box = _BOX(0, 0, 0, td.w, td.h, 1)
         _com(self._dc, 46, None, ctypes.c_void_p, U, U, U, U, ctypes.c_void_p, U, ctypes.POINTER(_BOX))(
             self._dc, target.value, 0, 0, 0, 0, self._tex[3], 0, ctypes.byref(box))  # CopySubresourceRegion
@@ -198,13 +185,13 @@ class D3DUnderlay(QObject):
     def _free(self):
         # mpv frees its GL objects with its context current; the window goes before mpv terminates
         if self._ctx is not None:
-            self._gl.makeCurrent(self._surface)
+            self._gl.make_current()
             self._ctx.free()
             self._ctx = None
             if self._tex:
                 self._drop_texture()
             self._f["close"](self._hdev)
-            self._gl.doneCurrent()
+            self._gl.free()
 
 
 class VideoUnderlay(QObject):

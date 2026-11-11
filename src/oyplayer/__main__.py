@@ -172,6 +172,24 @@ def place_on_screen(app, win, number):
     log.info("placed on %s", screen.name())
 
 
+def show_whole(win):
+    """Show the window with its first frame in it. Shown at once it stood as an empty frame for
+    the 0.3 s that frame takes (the owner's recording); Windows keeps it out of sight until then."""
+    import ctypes
+    dwmapi = ctypes.WinDLL("dwmapi")
+
+    def cloak(on):
+        dwmapi.DwmSetWindowAttribute(ctypes.c_void_p(int(win.winId())), 13,     # DWMWA_CLOAK
+                                     ctypes.byref(ctypes.c_int(on)), 4)
+
+    def drawn():
+        win.frameSwapped.disconnect(drawn)
+        cloak(False)
+    cloak(True)
+    win.frameSwapped.connect(drawn)
+    win.show()
+
+
 def main(argv):
     if argv[1:2] == ["--unregister"]:      # the uninstaller takes the file types back
         from .assoc import unregister
@@ -180,6 +198,10 @@ def main(argv):
     # the showcase (master screenshots) runs under the self-test's rules: monitor 3, silent, no focus
     showcase = len(argv) >= 4 and argv[1] in ("--showcase", "--features")
     selftest = len(argv) >= 4 and argv[1] == "--selftest" or showcase
+    # the video card is asked beside the start (wgl.py); OY_VIDEO=gl: the OpenGL window, as on a
+    # machine without the interop (self-test comparisons)
+    from . import wgl
+    probe = wgl.Probe() if os.environ.get("OY_VIDEO") != "gl" else None
     app = QApplication(argv)
     app.setApplicationName("OY Player")
     app.setOrganizationName("oyplayer")
@@ -215,11 +237,7 @@ def main(argv):
     from .scheduler import Scheduler
     from .tray import Tray
     from .curtain import Curtain
-    from .video import D3DUnderlay, VideoUnderlay, dx_interop
-    # OY_VIDEO=gl: the OpenGL window, as on a machine without the interop (self-test comparisons)
-    d3d = os.environ.get("OY_VIDEO") != "gl" and dx_interop()
-    QQuickWindow.setGraphicsApi(QSGRendererInterface.GraphicsApi.Direct3D11 if d3d
-                                else QSGRendererInterface.GraphicsApi.OpenGL)
+    from .video import D3DUnderlay, VideoUnderlay
 
     def mpv_log(level, component, text):
         if level in ("fatal", "error", "warn"):
@@ -299,6 +317,9 @@ def main(argv):
     # Text through Windows' own hinting, as other programs draw it: Qt's default (distance
     # fields) keeps the letters' outlines soft at 11-13 px
     QQuickWindow.setTextRenderType(QQuickWindow.TextRenderType.NativeTextRendering)
+    d3d = probe is not None and probe.dx_interop()      # the answer has had the whole start to come
+    QQuickWindow.setGraphicsApi(QSGRendererInterface.GraphicsApi.Direct3D11 if d3d
+                                else QSGRendererInterface.GraphicsApi.OpenGL)
     engine = QQmlApplicationEngine()
     ctx = engine.rootContext()
     ctx.setContextProperty("player", player)
@@ -339,7 +360,7 @@ def main(argv):
     actions.window = win
     win.installEventFilter(actions)
     place_on_screen(app, win, os.environ.get("OY_SCREEN") or ("3" if info.selftest else ""))
-    win.show()
+    show_whole(win)
     log.info("video through %s", "Direct3D 11" if d3d else "OpenGL")
     win.setProperty("videoD3D", d3d)
     underlay = (D3DUnderlay if d3d else VideoUnderlay)(win, core)

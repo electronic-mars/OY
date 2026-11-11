@@ -149,7 +149,7 @@ Window {
     // one sign for «a menu or card is open»: Esc closes it first, the fullscreen panels stay
     // while it is open, and the hints of the keys under it keep quiet (Tip.qml)
     readonly property var menus: [subsMenu, speedMenu, audioMenu, pictureMenu, schedMenu, skipMenu]
-    readonly property var popups: menus.concat([videoPanel, infoPanel, settingsPanel])
+    readonly property var popups: menus.concat([videoPanel, infoPanel], settingsPanel ? [settingsPanel] : [])
     readonly property bool menuOpen: menus.some(m => m.visible)        // it takes the arrows and Enter
     readonly property bool popupOpen: popups.some(p => p.visible)
     onPopupOpenChanged: wake()
@@ -218,7 +218,10 @@ Window {
         function onLoadAudioRequested() { audioDialog.open() }
         function onAudioMenuRequested() { win.openAudioMenu() }
         function onFileInfoRequested() { if (player.hasFile) infoPanel.open() }
-        function onSettingsRequested() { settingsPanel.visible ? settingsPanel.close() : settingsPanel.open() }
+        function onSettingsRequested() {
+            settingsLoader.asynchronous = false     // asked for before it is made: made now
+            settingsPanel.visible ? settingsPanel.close() : settingsPanel.open()
+        }
         function onHistoryRequested() { win.showPage(1) }
         function onRadioRequested() { win.showPage(2) }
         function onSchedulerRequested() { win.openSchedMenu() }
@@ -1019,7 +1022,7 @@ Window {
                 visible: Theme.settingsRight === onRight
                 objectName: visible ? "keySettings" : ""
                 glyph: Theme.icSettings; tip: L.t.t_settings
-                latched: settingsPanel.visible
+                latched: !!settingsPanel && settingsPanel.visible
                 anchors.verticalCenter: parent.verticalCenter
                 onClicked: actions.run("settings")
             }
@@ -1072,7 +1075,14 @@ Window {
                  x: (win.width - width) / 2
                  y: win.height - (win.bare ? 0 : win.panelH) - height - 12 }
     InfoPanel { id: infoPanel; objectName: "infoPanel"; parent: Overlay.overlay }
-    SettingsPanel { id: settingsPanel; objectName: "settingsPanel"; parent: Overlay.overlay }
+    // The settings are made after the window is up, in the gaps between its frames: made with
+    // it, they held its first frame back by 90 ms (measured), and nobody sees them at the start
+    Loader {
+        id: settingsLoader
+        asynchronous: true
+        sourceComponent: SettingsPanel { objectName: "settingsPanel"; parent: Overlay.overlay }
+    }
+    readonly property var settingsPanel: settingsLoader.item
 
     // sleep or shutdown is coming (scheduler, or the setting for the end of the list):
     // the time left, and the way out (the button or Esc)
