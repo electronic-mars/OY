@@ -78,7 +78,7 @@ a.binaries = [b for b in a.binaries if used(b)]
 # (an empty one counts against an unsigned program)
 VERSION = re.search(r'__version__ = "([^"]+)"', (SRC / "oyplayer" / "__init__.py").read_text()).group(1)
 NUMS = (tuple(int(x) for x in VERSION.split(".")) + (0, 0, 0, 0))[:4]
-STRINGS = {"CompanyName": "Oleksandr Kyrychenko", "FileDescription": "OY Player — video player",
+STRINGS = {"CompanyName": "Oleksandr Kyrychenko", "FileDescription": "OY Player",
            "FileVersion": VERSION, "InternalName": "OYPlayer", "LegalCopyright": "© Oleksandr Kyrychenko, GPL v3",
            "OriginalFilename": "OYPlayer.exe", "ProductName": "OY Player", "ProductVersion": VERSION}
 version = VSVersionInfo(
