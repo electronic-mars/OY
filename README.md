@@ -21,11 +21,15 @@ A free video player for Windows 10 and 11 that also cuts and annotates.
 - **39 languages.** In Arabic, Persian and Hebrew the window mirrors.
 - **No ads, no telemetry, no account.** Once a day it looks for a new version and installs it only when you press «Update and restart». Licensed under the [GNU GPL v3](LICENSE).
 
-| Open one episode, the next ones line up | Mark the opening and credits once |
+| A free video player for Windows that also cuts and annotates | Plays nearly any format, with no ads and no account |
 |---|---|
-| ![The player with the playlist open: three episodes of a mini-series, each with a frame, its number and its length, the first one playing](docs/screenshots/series-playlist.webp) | ![The right-click menu of the seek bar, «Skip opening and credits», with the marked opening and credits shaded on the bar](docs/screenshots/skip-menu.webp) |
-| **A phone video becomes a widescreen one** | **A key for every command, and you can change any** |
-| ![The editor with an upright phone clip in a 16:9 frame over a blurred, enlarged copy of itself](docs/screenshots/frame-16x9.webp) | ![Settings › Controls › Keys: every command with its keys, each removable, and a plus to add another](docs/screenshots/keys.webp) |
+| ![The player paused on Ice Moon Crash: two astronauts run from an explosion on an icy moon, Saturn in the sky, the seek bar and controls below](docs/screenshots/crash.webp) | ![The player paused on Forest Goddess: a woman crowned with antlers leaps at an orc in a forest of giant mushrooms](docs/screenshots/goddess.webp) |
+| **Cut the clip and draw over it: a circle, an arrow and text, each with its own time** | **Take a still, ring it, point at it, write on it, then copy or save** |
+| ![The editor (Ctrl+E) on a frame of Tears of Steel: a yellow ellipse around a robot leaping out of smoke, a red arrow and the caption «Incoming!», each on its own track of the timeline below](docs/screenshots/editor.webp) | ![A still of Tears of Steel in the screenshot editor: a red circle around the robot, a white arrow and the caption «Behind you!», with Copy, Save and Close](docs/screenshots/shot-editor.webp) |
+| **Pause, close the player, or put the computer to sleep or shut it down: after this file, when the list ends, or in 15 minutes to 2 hours** | **Pick the audio track or load one from a file, even out the volume, choose the device, move the sound earlier or later, change the pitch** |
+| ![The timer menu over a frame of Tears of Steel: what to do (pause, close the player, put the computer to sleep, shut it down) and when (after this file, when the list ends, in 15 minutes up to 2 hours)](docs/screenshots/schedule.webp) | ![The sound menu over a frame of Tears of Steel: the audio track and loading one from a file, normalization, EBU R128, compressor and speech leveler, the output device, sound earlier or later by 0.1 s, pitch up and down](docs/screenshots/sound.webp) |
+| **Open one episode, the next ones line up** | **Draw on the video, each drawing with its own time** |
+| ![The player with the playlist open: three episodes of a mini-series, each with a frame, its number and its length, the first one playing](docs/screenshots/series-playlist.webp) | ![The editor on a cartoon of Mars and Saturn: an orange box around two astronauts, an arrow and the yellow caption «Next stop: Saturn», each with its own time on the timeline](docs/screenshots/draw.webp) |
 
 ![Editing a cartoon of Mars and Saturn: Ctrl+E opens the editor, I cuts off the start, the playhead is scrolled back and forth along the timeline, O cuts off the end, then a yellow circle, a red arrow and the white caption «Next stop: Saturn» are drawn over the picture, each on its own track, and the clip is saved](docs/demo/edit.gif)
 
