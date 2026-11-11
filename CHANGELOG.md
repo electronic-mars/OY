@@ -5,6 +5,12 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 
 ## [Unreleased]
 
+## [0.16.3] - 2026-11-11
+
+### Fixed
+- Opened with a file, the player appears at once at the picture's size, with the picture and the panel in it: in 0.16.2 its empty window of the usual size stood for half a second first, then the picture small in it, and only then the window grew.
+- Closing the player while a file plays is silent at once: the sound played on for a third of a second after the window had gone, and louder for a file that has a volume of its own.
+
 ## [0.16.2] - 2026-11-11
 
 ### Changed
