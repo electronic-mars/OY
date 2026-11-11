@@ -279,18 +279,18 @@ Window {
 
     // "Scale 50…200 %": the picture at that share of its own pixels, the window around it.
     // After a resize the window may hang past its monitor's edge: pull it back inside.
-    function keepOnScreen() {
-        var a = app.workArea(win)
-        x = Math.max(a[0], Math.min(x, a[0] + a[2] - width))
-        y = Math.max(a[1], Math.min(y, a[1] + a[3] - height))
-    }
-    function scaleTo(f, quiet) {
+    // The window's size, and its place when it must stay on the screen, change in one step:
+    // set one after another, Windows showed each (the window narrow, then tall, then moved)
+    function scaleTo(f, quiet, onScreen) {
         if (!player.videoW || fs) return
         var a = app.workArea(win), dpr = a[4]
         if (visibility === Window.Maximized) showNormal()
         // never larger than the monitor's work area, whatever was asked for
-        width = Math.min(a[2], Math.max(minimumWidth, Math.round(player.videoW * f / dpr) + sideW))
-        height = Math.min(a[3], Math.max(minimumHeight, Math.round(player.videoH * f / dpr) + titleH + panelH))
+        var w = Math.min(a[2], Math.max(minimumWidth, Math.round(player.videoW * f / dpr) + sideW))
+        var h = Math.min(a[3], Math.max(minimumHeight, Math.round(player.videoH * f / dpr) + titleH + panelH))
+        var nx = onScreen ? Math.max(a[0], Math.min(x, a[0] + a[2] - w)) : x
+        var ny = onScreen ? Math.max(a[1], Math.min(y, a[1] + a[3] - h)) : y
+        setGeometry(nx, ny, w, h)
         if (!quiet) player.osdMessage(L.t.osd_win_size.arg(Math.round(f * 100)))
     }
 
@@ -1168,8 +1168,10 @@ Window {
                     // the window's least width, edge to edge with the panel, instead of standing
                     // between black bars (as long as it fits the screen)
                     var f = Math.min(fits, Math.max(1, (win.minimumWidth - win.sideW) * dpr / player.videoW))
-                    win.scaleTo(f, true)
-                    win.keepOnScreen()
+                    // the screen held still over the change (curtain.py): Windows shows a window
+                    // that has changed size once more with its old frame, the panel across its middle
+                    if (win.shown) curtain.cover(false, 2)
+                    win.scaleTo(f, true, true)
                     console.info("fit", player.videoW + "x" + player.videoH, "area", area, "f", f.toFixed(3),
                                  "window", win.width + "x" + win.height, "at", win.x + "," + win.y)
                 }
@@ -1179,6 +1181,22 @@ Window {
         }
     }
     property string fittedPath: ""
+    // A new file's picture waits until the window has been fitted to it (video.py leaves it
+    // undrawn): it played for a frame or more in the window as the last file left it, small or
+    // of another shape, before the window changed. Never for long, whatever the file does.
+    readonly property bool pictureHeld: player.path !== "" && player.path !== fittedPath && holdLimit.running
+    Timer { id: holdLimit; interval: 1000 }
+    property string heldPath: ""
+    Connections {
+        target: player
+        function onChanged() {
+            if (player.path === win.heldPath) return
+            win.heldPath = player.path
+            if (player.path !== win.fittedPath) holdLimit.restart()
+        }
+    }
+    onPictureHeldChanged: if (!pictureHeld) win.update()
+    property bool shown: false      // on the screen (__main__.py, show_whole)
     // the first file's picture is known and the window has its size: a player started with a
     // file appears only now (show_whole in __main__.py)
     property bool settled: false

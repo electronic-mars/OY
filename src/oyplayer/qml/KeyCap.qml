@@ -70,10 +70,14 @@ Item {
         color: key.accent ? Qt.tint(Theme.accTop, Qt.rgba(1, 1, 1, .3)) : Qt.tint(Theme.capTop, Qt.rgba(1, 1, 1, Theme.light ? .9 : .1))
     }
     // pressed in: the cap sinks into a dark well of its own outline, so the key keeps its whole
-    // shape (a cap moved down over nothing read as a key cut off along its top)
+    // shape (a cap moved down over nothing read as a key cut off along its top). The cap goes
+    // down a pixel whole, into the place of the hairline under it: the key stands on the same
+    // pixels pressed and not. (Its top alone went down, by two, and its foot stayed: the cap
+    // was a pixel shorter, a round key no longer round, its sign half a pixel off, and the
+    // line of the panel's well showed under its foot where the raised key covers it.)
     Rectangle {
         visible: key.down && !key.flat
-        anchors.fill: parent; anchors.bottomMargin: -1
+        anchors.fill: parent
         radius: key.r
         color: key.accent ? Qt.rgba(0, 0, 0, .45) : Theme.capShadow
     }
@@ -81,7 +85,7 @@ Item {
         id: cap
         anchors.fill: parent
         anchors.topMargin: key.flat ? 0 : key.down ? 2 : 1
-        anchors.bottomMargin: key.flat ? 0 : -1
+        anchors.bottomMargin: key.flat ? 0 : key.down ? -2 : -1
         radius: key.r
         border.width: key.flat ? 1 : 0
         border.color: area.containsMouse || area.pressed || key.held ? Theme.line : "transparent"

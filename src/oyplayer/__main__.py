@@ -196,6 +196,7 @@ def show_whole(win, with_file):
             state.clear()
             win.frameSwapped.disconnect(drawn)
             cloak(False)
+            win.setProperty("shown", True)
 
     def drawn():
         if with_file and not win.property("settled"):

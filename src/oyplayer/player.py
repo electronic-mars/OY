@@ -44,6 +44,9 @@ _OBSERVED = {
     "sub-scale": ("subScale", 1.0),
     "dwidth": ("videoW", 0),
     "dheight": ("videoH", 0),
+    # the picture as it is stored, before the aspect and any turn: the editor's frame is made from it
+    "width": ("sourceW", 0),
+    "height": ("sourceH", 0),
     "container-fps": ("fps", 0.0),
     "aid": ("aid", False),
     "audio-delay": ("audioDelay", 0.0),
@@ -811,7 +814,9 @@ class Player(QObject):
     def setVideoMargins(self, top, bottom, right, left):
         """Fractions of the window the picture must keep clear (title bar, panel, playlist: on
         the left in a right-to-left language)."""
-        self.mpv["video-margin-ratio-top"] = top
-        self.mpv["video-margin-ratio-bottom"] = bottom
-        self.mpv["video-margin-ratio-right"] = right
-        self.mpv["video-margin-ratio-left"] = left
+        # Never waited for: mpv answers such a change only after its frame has been drawn, and
+        # the frame is drawn by this very thread. Asked the plain way while the window changed
+        # size, both stood for mpv's 200 ms limit with the old frame in the new window (measured:
+        # 220 ms between the window's new width and its new height).
+        for side, value in (("top", top), ("bottom", bottom), ("right", right), ("left", left)):
+            self.mpv.command_async("set", f"video-margin-ratio-{side}", str(value))

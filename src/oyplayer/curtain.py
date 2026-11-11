@@ -108,11 +108,15 @@ class Curtain(QObject):
         self.limit = QTimer(self, singleShot=True, interval=500, timeout=self.down)
 
     @Slot(bool)
-    def cover(self, full):
+    @Slot(bool, int)
+    def cover(self, full, frames=1):
         """Freeze the window's monitor as it is now; down once the window, `full` screen or not,
-        has drawn a frame at its new size and Windows has composed it."""
+        has drawn a frame at its new size (its second, with `frames` 2: the first one of a window
+        fitted to a new picture still has the picture where the old size put it) and Windows has
+        composed it."""
         # first: whatever fails below, the still screen goes with the new frame or the limit
         self.full = full
+        self.frames = frames
         self.limit.start()
         mi = MONITORINFO(ctypes.sizeof(MONITORINFO))
         u32.GetMonitorInfoW(u32.MonitorFromWindow(int(self.win.winId()), MONITOR_DEFAULTTONEAREST),
@@ -143,6 +147,9 @@ class Curtain(QObject):
 
     def _swapped(self):
         if self.full is not None and self.win.property("fullSized") == self.full:
+            self.frames -= 1
+            if self.frames > 0:
+                return
             for _ in range(2):      # the new frame on the screen, and the bars gone, before the curtain goes
                 dwmapi.DwmFlush()
             self.down()

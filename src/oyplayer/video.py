@@ -155,6 +155,10 @@ class D3DUnderlay(QObject):
         self._win.beginExternalCommands()
         if self._ctx is None:
             self._init_ctx()
+        if self._win.property("pictureHeld"):
+            # a new file's picture is not shown in a window still sized for the last one (Main.qml)
+            self._win.endExternalCommands()
+            return
         # the texture the pass draws into (the window's back buffer, or grabWindow's target): its
         # size is the frame's real one, so a resized window gets the picture at its new size at once
         rtv = ctypes.c_void_p()
@@ -232,7 +236,7 @@ class VideoUnderlay(QObject):
         self._size = (round(self._win.width() * dpr), round(self._win.height() * dpr))
 
     def _render(self):
-        if self._ctx is None:
+        if self._ctx is None or self._win.property("pictureHeld"):
             return
         self._win.beginExternalCommands()
         fbo = ctypes.c_int()

@@ -611,10 +611,11 @@ class Editor(NoteEdits):
         self.changed.emit()
 
     def _source_size(self):
-        try:
-            return int(self.p.mpv.width or 0), int(self.p.mpv.height or 0)       # mpv["…"] reads options/…
-        except (TypeError, ValueError, AttributeError):
-            return 0, 0
+        # What the player has been told, never asked of mpv here: this runs on every change the
+        # player reports, and mpv answers a question about the picture only after its frame has
+        # been drawn, by this very thread. Each file opened stood for mpv's 200 ms limit, twice
+        # (measured), with the picture already playing in a window not yet fitted to it.
+        return int(self.p._state["sourceW"] or 0), int(self.p._state["sourceH"] or 0)
 
     def _apply_view(self):
         w, h = self._source_size()
