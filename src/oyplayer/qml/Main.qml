@@ -1173,10 +1173,15 @@ Window {
                     console.info("fit", player.videoW + "x" + player.videoH, "area", area, "f", f.toFixed(3),
                                  "window", win.width + "x" + win.height, "at", win.x + "," + win.y)
                 }
-            }
+                win.settled = true
+            } else if (player.hasFile && player.tracks.length > 0 && !player.tracks.some(t => t.type === "video"))
+                win.settled = true      // sound alone: there is no picture to wait for
         }
     }
     property string fittedPath: ""
+    // the first file's picture is known and the window has its size: a player started with a
+    // file appears only now (show_whole in __main__.py)
+    property bool settled: false
 
     // ---------- frameless window: resize from the edges
     Repeater {

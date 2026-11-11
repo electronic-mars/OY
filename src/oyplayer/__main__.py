@@ -26,7 +26,7 @@ os.environ["QT_D3D_NO_FLIP"] = "1"
 # Menus and popups are drawn entirely by us; the Basic style is the one that lets them be.
 os.environ["QT_QUICK_CONTROLS_STYLE"] = "Basic"
 
-from PySide6.QtCore import Property, QObject, QStandardPaths, QUrl, Signal, Slot  # noqa: E402
+from PySide6.QtCore import Property, QObject, QStandardPaths, QTimer, QUrl, Signal, Slot  # noqa: E402
 from PySide6.QtGui import QDesktopServices, QIcon  # noqa: E402
 from PySide6.QtQml import QQmlApplicationEngine  # noqa: E402
 from PySide6.QtQuick import QQuickWindow, QSGRendererInterface  # noqa: E402
@@ -35,6 +35,9 @@ from PySide6.QtWidgets import QApplication  # noqa: E402   (the tray icon is a w
 from . import __version__  # noqa: E402
 from .i18n import lang  # noqa: E402
 from .log import flush_writes, home, log, setup  # noqa: E402
+
+
+PICTURE_WAIT = 1500     # ms a window started with a file waits for its picture before it appears
 
 
 class AppInfo(QObject):
@@ -172,22 +175,39 @@ def place_on_screen(app, win, number):
     log.info("placed on %s", screen.name())
 
 
-def show_whole(win):
+def show_whole(win, with_file):
     """Show the window with its first frame in it. Shown at once it stood as an empty frame for
-    the 0.3 s that frame takes (the owner's recording); Windows keeps it out of sight until then."""
+    the 0.3 s that frame takes (the owner's recording); Windows keeps it out of sight until then.
+
+    Started with a file, it appears at the picture's size with the picture in it: until the
+    window has been fitted to it (Main.qml, «settled») the empty window of the usual size stood
+    for half a second, then the picture small in it, then it grew (every frame of a start, 60 a
+    second). A file that takes long to open does not keep the window away: PICTURE_WAIT at most."""
     import ctypes
     dwmapi = ctypes.WinDLL("dwmapi")
+    state = {"frames": 2 if with_file else 1}      # the fitted window's second frame has the picture
 
     def cloak(on):
         dwmapi.DwmSetWindowAttribute(ctypes.c_void_p(int(win.winId())), 13,     # DWMWA_CLOAK
                                      ctypes.byref(ctypes.c_int(on)), 4)
 
+    def reveal():
+        if state:
+            state.clear()
+            win.frameSwapped.disconnect(drawn)
+            cloak(False)
+
     def drawn():
-        win.frameSwapped.disconnect(drawn)
-        cloak(False)
+        if with_file and not win.property("settled"):
+            return
+        state["frames"] -= 1
+        if not state["frames"]:
+            reveal()
     cloak(True)
     win.frameSwapped.connect(drawn)
     win.show()
+    if with_file:
+        QTimer.singleShot(PICTURE_WAIT, reveal)
 
 
 def main(argv):
@@ -360,7 +380,7 @@ def main(argv):
     actions.window = win
     win.installEventFilter(actions)
     place_on_screen(app, win, os.environ.get("OY_SCREEN") or ("3" if info.selftest else ""))
-    show_whole(win)
+    show_whole(win, bool(files))
     log.info("video through %s", "Direct3D 11" if d3d else "OpenGL")
     win.setProperty("videoD3D", d3d)
     underlay = (D3DUnderlay if d3d else VideoUnderlay)(win, core)
@@ -433,6 +453,10 @@ def main(argv):
         underlay.ready.connect(test.start)
 
     def save_state():
+        # Silent at once: the sound played on for the third of a second the window takes to go,
+        # and louder for it when the file had a volume of its own (leaving a file hands mpv the
+        # general volume for the next one)
+        core.mute = True
         # On every way out. When Windows ends the session (a restart, a sign-out, the
         # scheduler's shutdown) Qt says so while it handles WM_ENDSESSION, and Windows may end
         # the process as soon as that returns: long before app.exec() would.
