@@ -5,6 +5,16 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 
 ## [Unreleased]
 
+## [0.16.4] - 2026-11-11
+
+### Fixed
+- A file dropped into the open player, or the next file of the list with another shape, changes the window in one step: the picture no longer plays first in the window as the last file left it, and the window no longer stands for a fifth of a second grown with the old frame in it, the panel across its middle.
+- Opening a file is about 0.4 s quicker, and changing the window's size while a file plays no longer makes the player stand still for a moment: the player waited for mpv in two places where mpv was waiting for the player.
+- A pressed key keeps its shape: a round key (the playlist's) lost a pixel of its height, its sign sat half a pixel off, and the line of the panel showed under its foot.
+
+### Changed
+- README: the same eight screenshots as on the website.
+
 ## [0.16.3] - 2026-11-11
 
 ### Fixed
