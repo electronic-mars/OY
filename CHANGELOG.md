@@ -5,6 +5,12 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 
 ## [Unreleased]
 
+## [0.16.2] - 2026-11-11
+
+### Changed
+- The player starts about half a second sooner (measured: the window is up in 0.9 s instead of 1.4 s), and its window appears whole, at once: before, an empty frame stood on the screen for a third of a second before the interface was drawn into it.
+- Windows names the player just «OY Player» in «Open with» and in «Default apps», in every language, without «video player» after the name.
+
 ## [0.16.1] - 2026-11-07
 
 ### Changed
