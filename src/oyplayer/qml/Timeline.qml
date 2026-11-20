@@ -362,10 +362,11 @@ Item {
     }
     // the position as a tuning needle: from the ticks (under the labels, never through them)
     // down to the cap, with a small head
+    readonly property real needleAt: headArea.pressed ? headArea.v : rail.shown
     Item {
         objectName: "needle"
         visible: rail.enabled && tl.editing
-        x: Math.round(rail.shown * rail.width) - 1
+        x: Math.round(area.needleAt * rail.width) - 1
         y: marks.tickTop
         z: 1            // over the scale and the fragments' blocks: it is where the picture is
         Rectangle { width: 2; height: rail.y + rail.height - parent.y; radius: 1; color: Theme.acc }
@@ -377,11 +378,29 @@ Item {
                        g.moveTo(0, 0); g.lineTo(8, 0); g.lineTo(4, 5); g.closePath(); g.fill() }
         }
     }
+    // the needle's head on the scale is a handle as well (the owner, 20.11): an open hand over it,
+    // a closed one while it is dragged; the frame follows as it does on the clip track
+    MouseArea {
+        id: headArea
+        objectName: "needleHead"
+        visible: rail.enabled && tl.editing
+        property real v: 0
+        x: Math.round(area.needleAt * rail.width) - width / 2
+        width: 18; height: marks.height + tl.railGap
+        z: 2
+        hoverEnabled: true
+        preventStealing: true
+        cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+        function at(mx) { return Math.max(0, Math.min(1, mapToItem(rail, mx, 0).x / rail.width)) }
+        onPressed: (m) => { v = at(m.x); tl.seekTo(v * tl.duration, false) }
+        onPositionChanged: (m) => { if (pressed) { v = at(m.x); tl.seekTo(v * tl.duration, false) } }
+        onReleased: (m) => { v = at(m.x); tl.seekTo(v * tl.duration, true) }
+    }
     // ... and on down through the drawings' tracks, under their bars and their words
     Rectangle {
         visible: rail.enabled && tl.editing && lane.visible
         z: -0.5
-        x: Math.round(rail.shown * rail.width) - 1
+        x: Math.round(area.needleAt * rail.width) - 1
         y: rail.y + rail.height
         width: 2; height: lane.y + lane.height - y; radius: 1
         color: Theme.acc

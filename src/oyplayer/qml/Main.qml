@@ -77,7 +77,9 @@ Window {
         if ((fsPending > 0 && fs && fullSized) || (fsPending < 0 && !fs && !fullSized)) fsSettled()
     }
     Timer { id: fsSettle; interval: 1500; onTriggered: win.fsSettled() }   // a change that never came
-    readonly property bool chromeShown: fsPending === 0 && (!fsLook || chromeAwake) && !uiHidden
+    // editing, full screen keeps the panel: it is the work surface, and the picture stands above it
+    readonly property bool editFs: editor.active && fsLook
+    readonly property bool chromeShown: fsPending === 0 && (!fsLook || chromeAwake || editor.active) && !uiHidden
     readonly property bool bare: fsLook || uiHidden    // the picture takes the whole window
     property bool playlistShown: false
     // The area the keyboard works in: "list" (the playlist, any tab), "strip" (the edit's
@@ -99,7 +101,7 @@ Window {
     readonly property int sideW: playlistShown && !bare ? playlistW : 0
 
     function updateMargins() {
-        if (bare) player.setVideoMargins(0, 0, 0, 0)
+        if (bare) player.setVideoMargins(0, editFs ? panelH / height : 0, 0, 0)
         else if (L.rtl) player.setVideoMargins(titleH / height, panelH / height, 0, sideW / width)
         else player.setVideoMargins(titleH / height, panelH / height, sideW / width, 0)
     }
@@ -109,6 +111,7 @@ Window {
     onSideWChanged: updateMargins()
     onPanelHChanged: updateMargins()
     onBareChanged: updateMargins()
+    onEditFsChanged: updateMargins()
     // full screen from the mouse (the middle button, a double click) opens on the bare picture;
     // from a key or the title bar the panels show for a moment, as they always did
     property bool quietFs: false
@@ -480,7 +483,7 @@ Window {
         anchors.rightMargin: win.sideW
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton
-        cursorShape: win.fs && !win.chromeAwake ? Qt.BlankCursor : Qt.ArrowCursor
+        cursorShape: win.fs && !win.chromeAwake && !editor.active ? Qt.BlankCursor : Qt.ArrowCursor
         property point pressAt
         property bool moved: false
         onPressed: (m) => { pressAt = Qt.point(m.x, m.y); moved = false }

@@ -31,6 +31,9 @@ ICON_SIZES = (16, 20, 24, 32, 40, 48, 64, 256)
 CLASSES = r"Software\Classes"
 APP_KEY = r"Software\OYPlayer"
 REGISTERED = r"Software\RegisteredApplications"
+# Where Windows keeps the name an exe once gave of itself, and shows it in «Open with» long
+# after: builds before 0.16.2 called themselves «OY Player — video player» (the owner's screenshot).
+MUICACHE = r"Local Settings\Software\Microsoft\Windows\Shell\MuiCache"
 
 
 def command():
@@ -156,14 +159,11 @@ def register(notify=True, audio=False, windows_icons=False):
     exts = EXTS if audio else VIDEO
     cmd = command()
     icons = _icons(windows_icons)
-    for pid, text in ((MEDIA_ID, tr("assoc_media")), (AUDIO_ID, tr("assoc_audio")),
-                      (RADIO_ID, tr("assoc_radio"))):
-        _set(rf"{CLASSES}\{pid}", {"": text})
+    for pid in (MEDIA_ID, AUDIO_ID, RADIO_ID):
         _set(rf"{CLASSES}\{pid}\shell\open\command", {"": cmd})
         if icons[pid]:
             _set(rf"{CLASSES}\{pid}\DefaultIcon", {"": icons[pid]})
     caps = rf"{APP_KEY}\Capabilities"
-    _set(caps, {"ApplicationName": APP, "ApplicationDescription": tr("assoc_desc")})
     _set(rf"{caps}\FileAssociations", {e: _prog_id(e) for e in exts})
     for e in exts:
         _set(rf"{CLASSES}\{e}\OpenWithProgids", {_prog_id(e): ""})
@@ -172,9 +172,45 @@ def register(notify=True, audio=False, windows_icons=False):
         exe = rf"{CLASSES}\Applications\{Path(sys.executable).name}"
         _set(rf"{exe}\shell\open\command", {"": cmd})
         _set(rf"{exe}\SupportedTypes", {e: "" for e in exts})
+    rename()
     log.info("file types registered for %s", cmd)
     if notify:
         ctypes.windll.shell32.SHChangeNotify(0x08000000, 0, None, None)    # SHCNE_ASSOCCHANGED
+
+
+def rename():
+    """The names Windows shows for the file types and for the player in «Open with», in the
+    player's language; also on each start and language change, so names an earlier version
+    wrote are put right without registering again."""
+    if not registered():
+        return
+    for pid, key in ((MEDIA_ID, "assoc_media"), (AUDIO_ID, "assoc_audio"), (RADIO_ID, "assoc_radio")):
+        _set(rf"{CLASSES}\{pid}", {"": tr(key)})
+    _set(rf"{APP_KEY}\Capabilities", {"ApplicationName": APP, "ApplicationDescription": tr("assoc_desc")})
+    if getattr(sys, "frozen", False):
+        _set(rf"{CLASSES}\Applications\{Path(sys.executable).name}", {"FriendlyAppName": APP})
+    _forget_old_name()
+
+
+def _forget_old_name():
+    """Windows' remembered names of any OYPlayer.exe, so the name is read anew from the exe."""
+    path = rf"{CLASSES}\{MUICACHE}"
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, path, 0, winreg.KEY_READ | winreg.KEY_WRITE) as k:
+            names, i = [], 0
+            while True:
+                try:
+                    name, value, _ = winreg.EnumValue(k, i)
+                except OSError:
+                    break
+                i += 1
+                if name.lower().endswith(r"\oyplayer.exe.friendlyappname") and value != APP:
+                    names.append(name)
+            for name in names:
+                winreg.DeleteValue(k, name)
+                log.info("forgot Windows' old name for %s", name)
+    except FileNotFoundError:
+        pass
 
 
 def unregister(notify=True):

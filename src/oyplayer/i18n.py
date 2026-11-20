@@ -70,7 +70,7 @@ EN = {
     "act_scheduler": "Scheduler",
     "tray_show": "Show / hide", "tray_next": "Next", "tray_prev": "Previous", "tray_exit": "Exit",
     # file types in Windows
-    "assoc_media": "Video — OY Player", "assoc_audio": "Audio — OY Player", "assoc_radio": "Radio station — OY Player",
+    "assoc_media": "Video (OY Player)", "assoc_audio": "Audio (OY Player)", "assoc_radio": "Radio station (OY Player)",
     "assoc_desc": "OY Player",
     # skipping openings and credits
     "osd_opening_skipped": "Opening skipped", "osd_credits_skipped": "Credits skipped",
@@ -455,7 +455,7 @@ UK = {
     "act_scheduler": "Планувальник",
     "tray_show": "Показати / сховати", "tray_next": "Наступний", "tray_prev": "Попередній", "tray_exit": "Вихід",
     # file types in Windows
-    "assoc_media": "Відео — OY Player", "assoc_audio": "Звук — OY Player", "assoc_radio": "Радіостанція — OY Player",
+    "assoc_media": "Відео (OY Player)", "assoc_audio": "Звук (OY Player)", "assoc_radio": "Радіостанція (OY Player)",
     "assoc_desc": "OY Player",
     # skipping openings and credits
     "osd_opening_skipped": "Заставку пропущено", "osd_credits_skipped": "Титри пропущено",

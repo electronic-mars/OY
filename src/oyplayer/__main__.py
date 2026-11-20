@@ -309,6 +309,9 @@ def main(argv):
         apply(settings, key, core, actions)
         if key in (None, "lang"):
             lang.set(settings["lang"])
+            if not selftest:
+                from . import assoc
+                assoc.rename()      # file type names in the new language, old names put right
         if key in (None, "audioMode"):
             player.setAudioMode(settings["audioMode"], quiet=key is None)
         player.auto_resume = settings["resume"]

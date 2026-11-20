@@ -5,6 +5,14 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 
 ## [Unreleased]
 
+### Changed
+- Editing, the playhead's yellow head on the time scale can be taken and dragged, with an open hand over it and a closed one while it is held.
+- Editing in full screen, the panel no longer steps aside and the pointer no longer hides: the picture stands above the panel, as in a window.
+- Windows names the player's file types «Video (OY Player)», without a dash, in every language.
+
+### Fixed
+- «Open with» showed the player as «OY Player — video player» long after the name was shortened: Windows kept the old name in its cache. The player now has Windows forget it, and puts the file types' names right on each start, without registering again.
+
 ## [0.16.4] - 2026-11-11
 
 ### Fixed

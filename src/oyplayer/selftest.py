@@ -489,6 +489,7 @@ class SelfTest(QObject):
             "shot": self.shot_steps,     # the screenshot: its name and folder; the screenshot editor
             "rv1": self.rv1_steps,     # code review 1 (05.11): the curtain, network folders, an edit's border, one player, the session's end
             "report": self.rp_steps,     # the site and the thanks in About; a crash's trace and the card after it
+            "fb5": self.fb5_steps,     # feedback 20.11: the needle's head, the editor in full screen, the file types' names
         }
         # tests\next-run-focus (used up like next-run-exe): the quick part and only the blocks it
         # names; empty, the quick part alone. Without it, everything.
@@ -5125,6 +5126,92 @@ class SelfTest(QObject):
 
     # ---- reports (06.11): the site and the thanks in About; a crash leaves a trace, and the next
     # start says so once, calmly, with a report that carries no paths and no names
+    # ---- feedback 20.11: the needle's head is a handle; editing, full screen keeps the panel;
+    # the file types' names without a dash, and Windows' remembered old name forgotten
+    def fb5_steps(self):
+        return [
+            (0, lambda: self.pl.add([str(Path(self.media).parent / "test_long.mkv")], True)),
+            (1500, lambda: setattr(self.p.mpv, "pause", True)),
+            (0, lambda: None if self.ed.active else self.key("E", Qt.ControlModifier)), (900, self.s_fb5_head),
+            (0, self.s_fb5_drag), (900, self.s_fb5_dragged),
+            (0, lambda: self.key("Enter")), (3600, self.s_fb5_fs), (0, lambda: self.key("Esc")),
+            (900, lambda: self.ed.close()), (300, self.s_fb5_names),
+        ]
+
+    def s_fb5_head(self):
+        head, rail = self.find_item("needleHead"), self.find_item("seekRail")
+        self.fb5_head = head
+        c = head.mapToScene(QPointF(head.width() / 2, 0)) if head else QPointF()
+        r = rail.mapToScene(QPointF(0, 0))
+        self.check("editing, the needle's head on the scale is a handle with an open hand over it, above the clip track",
+                   head is not None and head.isVisible() and head.property("cursorShape") == Qt.OpenHandCursor
+                   and c.y() < r.y() and abs(c.x() - (r.x() + rail.property("shown") * rail.width())) <= 2,
+                   f"head={head is not None} centre=({c.x():.0f},{c.y():.0f}) rail top={r.y():.0f}")
+
+    def s_fb5_drag(self):
+        head, rail = self.fb5_head, self.find_item("seekRail")
+        start = head.mapToScene(QPointF(head.width() / 2, head.height() / 2))
+        r = rail.mapToScene(QPointF(0, 0))
+        self.fb5_want = 0.7 * self.st("duration")
+        end = QPoint(int(r.x() + 0.7 * rail.width()), int(start.y()))
+        QTest.mousePress(self.win, Qt.LeftButton, Qt.NoModifier, QPoint(int(start.x()), int(start.y())))
+        for k in range(1, 6):
+            QTest.mouseMove(self.win, QPoint(int(start.x() + (end.x() - start.x()) * k / 5), end.y()))
+        self.fb5_grip = head.property("cursorShape")
+        QTest.mouseRelease(self.win, Qt.LeftButton, Qt.NoModifier, end)
+
+    def s_fb5_dragged(self):
+        rail, needle = self.find_item("seekRail"), self.find_item("needle")
+        tol = 2 / rail.width() * self.st("duration") + 0.2
+        # the needle itself stands where the frame now is
+        at = (needle.x() + 1) / rail.width() * self.st("duration")
+        self.check("dragging the needle's head takes the frame along, with a closed hand while it is held",
+                   abs(self.st("position") - self.fb5_want) <= tol and abs(at - self.fb5_want) <= tol
+                   and self.fb5_grip == Qt.ClosedHandCursor,
+                   f"position {self.st('position'):.2f}, needle at {at:.2f}, wanted {self.fb5_want:.2f} (±{tol:.2f}) "
+                   f"grip={self.fb5_grip} shown={rail.property('shown'):.3f}")
+
+    def s_fb5_fs(self):
+        panel = self.find_item("panel")
+        bottom = self.p.mpv["video-margin-ratio-bottom"]
+        self.check("editing in full screen, the panel stays after the pointer rests (2.5 s) and the picture stands above it",
+                   self.win.property("fs") is True and self.win.property("chromeShown") is True
+                   and panel.opacity() == 1 and bottom > 0.05,
+                   f"fs={self.win.property('fs')} panels={self.win.property('chromeShown')} "
+                   f"opacity={panel.opacity()} bottom margin={bottom:.3f}")
+        self.shot("fb5_01_edit_fullscreen")
+
+    def s_fb5_names(self):
+        from . import assoc
+        from .assoc import _delete_tree
+        dashed = []
+        for f in sorted((Path(__file__).parent / "lang").glob("*.json")):
+            if f.name == "languages.json":
+                continue
+            t = json.loads(f.read_text(encoding="utf-8"))
+            dashed += [f"{f.stem}:{k}" for k in ("assoc_media", "assoc_audio", "assoc_radio", "assoc_desc")
+                       if "—" in t.get(k, "") or "video player" in t.get(k, "").lower()]
+        for code, t in (("en", EN), ("uk", UK)):
+            dashed += [f"{code}:{k}" for k in ("assoc_media", "assoc_audio", "assoc_radio", "assoc_desc")
+                       if "—" in t.get(k, "")]
+        saved, assoc.CLASSES = assoc.CLASSES, SCRATCH + r"\Classes"
+        try:
+            path = rf"{assoc.CLASSES}\{assoc.MUICACHE}"
+            old = r"D:\Program Files\OY Player\OYPlayer.exe.FriendlyAppName"
+            other = r"C:\Other\Other.exe.FriendlyAppName"
+            with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, path, 0, winreg.KEY_WRITE) as k:
+                winreg.SetValueEx(k, old, 0, winreg.REG_SZ, "OY Player — video player")
+                winreg.SetValueEx(k, other, 0, winreg.REG_SZ, "Other")
+            assoc._forget_old_name()
+            left = reg_values(path) or {}
+        finally:
+            _delete_tree(SCRATCH)
+            assoc.CLASSES = saved
+        self.check("the file types' names have no dash and no «video player» in any language, and Windows' "
+                   "remembered old name of the player is forgotten (others' kept)",
+                   not dashed and old not in left and other in left and not reg_exists(SCRATCH),
+                   f"dashed={dashed} left={list(left)}")
+
     def rp_steps(self):
         return [
             (0, self.s_rp_parts), (0, self.s_rp_hook), (300, self.s_rp_hook_chk),
