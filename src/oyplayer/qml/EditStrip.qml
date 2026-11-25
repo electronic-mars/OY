@@ -165,6 +165,16 @@ Item {
                 font.family: Theme.uiFont; font.pixelSize: 12
             }
         }
+        // saved, and not changed since: said here; the next piece's key stands by Save
+        Text {
+            objectName: "editFinished"
+            visible: editor.finished && editor.previewing < 0 && !editor.exporting && editor.error === ""
+            anchors.fill: parent
+            verticalAlignment: Text.AlignVCenter
+            text: L.t.osd_saved.arg(editor.saved.split(/[\\/]/).pop())
+            elide: Text.ElideMiddle
+            color: Theme.tx2; font.family: Theme.uiFont; font.pixelSize: 11
+        }
         // a failed save stays said, with what to do, until a click or the next try
         Rectangle {
             objectName: "editError"
@@ -204,20 +214,27 @@ Item {
             Row {
                 spacing: 4
                 Text {
+                    id: totalText
                     objectName: "editTotal"
                     // while the edit plays: time played / length
                     text: editor.previewing >= 0 ? strip.fmt(strip.played) + " / " + strip.fmt(editor.total) : strip.fmt(editor.total)
                     color: Theme.tx; font.family: Theme.monoFont; font.pixelSize: 13; font.weight: Font.Medium
                 }
                 Text {
+                    id: summary
                     objectName: "editSummary"
                     anchors.baseline: parent.children[0].baseline
-                    // in a narrower window, or while the result plays (its bar takes the room): the length and the mode
+                    // in a narrower window, or while the result plays (its bar takes the room): the length and the mode;
+                    // and only where it leaves the time on the left its room (a long language, the keys after a save)
+                    readonly property real room: strip.width - tools.width - saveRow.width - strip.gap - 24 - 16
+                                                 - totalText.implicitWidth - modeText.implicitWidth - 4
                     visible: strip.frags.length > 0 && strip.width >= 1000 && editor.previewing < 0
+                             && room >= implicitWidth + 4
                     text: "•  " + strip.frags.length + " " + L.plural(strip.frags.length, L.t.frag_forms) + "  ·"
                     color: Theme.tx2; font.family: Theme.uiFont; font.pixelSize: 11
                 }
                 Text {
+                    id: modeText
                     objectName: "editMode"
                     anchors.baseline: parent.children[0].baseline
                     text: strip.frags.length === 0 ? L.t.edit_caps : { copy: L.t.lossless_caps, h264: "H.264", h265: "H.265" }[editor.mode]
@@ -285,6 +302,13 @@ Item {
                  anchors.verticalCenter: parent.verticalCenter
                  onClicked: editor.exporting ? editor.cancelExport() : actions.run("edit_save")
                  onRightClicked: actions.run("edit_save_as") }
+        // saved, and not changed since: the next piece of the same video starts from here
+        // (the owner, 20.11: five pieces cut from one long video in one viewing)
+        KeyCap { objectName: "editNextPiece"; visible: editor.finished && !editor.exporting
+                 glyph: "plus"; caption: strip.width >= 1500 ? L.t.es_next_piece : ""   // the words only where they leave the time its room
+                 tip: L.t.es_next_piece_tip
+                 anchors.verticalCenter: parent.verticalCenter
+                 onClicked: editor.nextPiece() }
         KeyCap { visible: editor.saved !== "" && !editor.exporting; glyph: Theme.icFolder
                  tip: L.t.es_reveal; anchors.verticalCenter: parent.verticalCenter
                  onClicked: editor.revealSaved() }

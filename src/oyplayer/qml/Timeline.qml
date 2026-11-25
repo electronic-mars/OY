@@ -19,7 +19,8 @@ Item {
     property var elsewhere: []      // editor: [row, file name] of the fragments in other files
     signal elsewherePicked(int row)
     // what lies over the scale's labels (fragment numbers, the other files' line): [x0, x1]
-    readonly property var covers: otherTag.visible ? [[otherTag.x, otherTag.x + otherTag.width]] : []
+    readonly property var covers: (otherTag.visible ? [[otherTag.x, otherTag.x + otherTag.width]] : [])
+                                  .concat(zoomKeys.visible ? [[zoomKeys.x, zoomKeys.x + zoomKeys.width]] : [])
     function covered(x, w) {
         return covers.some(c => x < c[1] + 3 && c[0] < x + w + 3)
     }
@@ -68,6 +69,15 @@ Item {
         acceptedModifiers: Qt.KeyboardModifierMask
         onWheel: (w) => {
             acc += w.angleDelta.y !== 0 ? w.angleDelta.y : w.angleDelta.x
+            // editing, Alt zooms round the pointer: up closer (Windows may send Alt's wheel sideways)
+            if (tl.editing && (w.modifiers & Qt.AltModifier)) {
+                while (Math.abs(acc) >= 120) {
+                    var closer = acc > 0
+                    acc -= closer ? 120 : -120
+                    tl.zoomAt(closer ? 0.7 : 1 / 0.7, Math.max(0, Math.min(area.width, w.x - tl.gutter)))
+                }
+                return
+            }
             var kind = (w.modifiers & Qt.ControlModifier) ? "frame" : (w.modifiers & Qt.ShiftModifier) ? "jump" : "seek"
             while (Math.abs(acc) >= 120) {
                 var fwd = acc > 0
@@ -107,9 +117,41 @@ Item {
         return { step: steps[i][0], minor: steps[i][1] }
     }
     TextMetrics { id: labelMetrics; font: marks.font; text: tl.duration >= 3600 ? "0:00:00" : "00:00" }
-    readonly property var ruler: rulerFor(duration, marks.width, Math.ceil(labelMetrics.advanceWidth))
+    readonly property var ruler: rulerFor(vLen, marks.width, Math.ceil(labelMetrics.advanceWidth))
 
-    function px(t) { return t / duration * area.width }
+    // The editor's zoom (the owner, 20.11: a few seconds of a five-hour video): the time shown
+    // across the timeline, from vA for vLen seconds; the whole file when not zoomed, and always
+    // outside the editor. Alt+wheel zooms round the pointer, the keys at the scale's end step it.
+    property real viewA: 0
+    property real viewLen: 0            // 0: the whole file
+    readonly property real minView: 2   // seconds: the closest zoom
+    readonly property bool zoomed: editing && duration > 0 && viewLen > 0 && viewLen < duration
+    readonly property real vA: zoomed ? viewA : 0
+    readonly property real vLen: zoomed ? viewLen : duration
+    onDurationChanged: viewLen = 0
+    onEditingChanged: viewLen = 0
+    function px(t) { return (t - vA) / vLen * area.width }
+    function timeAt(x) { return vA + x / area.width * vLen }
+    function inView(t) { return t >= vA && t <= vA + vLen }
+    function clampLen(len) { return Math.max(Math.min(minView, duration), Math.min(duration, len)) }
+    function setView(a, len) {
+        if (!(duration > 0)) return
+        len = clampLen(len)
+        if (len >= duration - 1e-6) { viewLen = 0; viewA = 0; return }
+        viewLen = len
+        viewA = Math.max(0, Math.min(duration - len, a))
+    }
+    // by factor (below 1: closer), keeping the time under x where it is
+    function zoomAt(factor, x) {
+        var t = timeAt(x), len = clampLen(vLen * factor)
+        setView(t - x / area.width * len, len)
+    }
+    // the playhead stays in sight: past an edge the view turns a page, unless something is held
+    property real followAfter: 0        // a fit just made: the seeks of its clicks still arriving
+    onPositionChanged: {
+        if (!zoomed || headArea.pressed || rail.dragging || drag !== null || overview.held || Date.now() < followAfter) return
+        if (position < vA || position > vA + vLen) setView(position - vLen * 0.1, vLen)
+    }
     // a drawing's times are shown in tenths, as the editor's marks: 0:13.0
     function tenths(s) {
         s = Math.round(Math.max(0, s) * 10) / 10
@@ -158,12 +200,12 @@ Item {
         drag = { i: n.i, a0: n.a, b0: n.b, mode: mode, x0: x, group: group, stops: stops, da: 0, db: 0, moved: false }
     }
     function dragTo(x, free) {
-        var d = drag, dt = (x - d.x0) / area.width * duration, a = d.a0, b = d.b0
+        var d = drag, dt = (x - d.x0) / area.width * vLen, a = d.a0, b = d.b0
         if (d.mode === "a") a = Math.max(0, Math.min(b - 0.2, a + dt))
         else if (d.mode === "b") b = Math.min(duration, Math.max(a + 0.2, b + dt))
         else { var s = Math.max(-a, Math.min(duration - b, dt)); a += s; b += s }
         if (!free) {           // Alt: no sticking
-            var near = 6 / area.width * duration
+            var near = 6 / area.width * vLen
             var stick = (t) => d.stops.reduce((best, c) => Math.abs(c - t) < Math.abs(best - t) ? c : best, Infinity)
             var sa = stick(a) - a, sb = stick(b) - b
             sa = Math.abs(sa) < near ? sa : 0
@@ -220,8 +262,41 @@ Item {
                    font.weight: parent.on ? Font.DemiBold : Font.Normal }
         }
         // over the names, on the scale's level: how many tracks there are
-        TrackName { objectName: "trackHeader"; x: 0; y: marks.y + 2; icon: "layers"
+        TrackName { objectName: "trackHeader"; x: 0; y: marks.y + 2; icon: "layers"; visible: !tl.zoomed
                     word: L.t.tl_tracks.arg(1 + (tl.noteLane && tl.notes.length ? tl.layout.count : 0)) }
+        // zoomed in, the header is the whole file in small: the fragments, the playhead, and a
+        // frame round the part in view; a click or a drag moves the view, Alt+wheel zooms
+        Item {
+            id: overview
+            objectName: "zoomOverview"
+            visible: tl.zoomed
+            readonly property bool held: ovArea.pressed
+            x: 0; y: marks.y + 3; width: parent.width; height: 14
+            function at(t) { return t / tl.duration * width }
+            Rectangle { anchors.fill: parent; radius: 3; color: tl.clipGround; border.color: Theme.line }
+            Repeater {
+                model: tl.zoomed ? tl.bands : []
+                Rectangle { x: overview.at(modelData[0]); width: Math.max(1, overview.at(modelData[1]) - x)
+                            y: 3; height: overview.height - 6; radius: 1; color: Theme.accA(.5) }
+            }
+            Rectangle { x: Math.round(overview.at(tl.position)); width: 1; height: overview.height; color: Theme.acc }
+            Rectangle {
+                objectName: "zoomFrame"
+                x: overview.at(tl.vA); width: Math.max(4, overview.at(tl.vLen))
+                height: overview.height; radius: 3
+                color: Qt.rgba(1, 1, 1, Theme.light ? .25 : .08); border.width: 1.5; border.color: Theme.tx
+            }
+            MouseArea {
+                id: ovArea
+                anchors.fill: parent
+                hoverEnabled: true
+                preventStealing: true
+                cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                function centre(mx) { tl.setView(mx / width * tl.duration - tl.vLen / 2, tl.vLen) }
+                onPressed: (m) => centre(m.x)
+                onPositionChanged: (m) => { if (pressed) centre(m.x) }
+            }
+        }
         TrackName { objectName: "trackClip"; y: rail.y + (rail.height - height) / 2; icon: "film"; word: L.t.tl_clip
                     on: tl.fragSel >= 0 }
         Repeater {
@@ -244,6 +319,7 @@ Item {
         id: area
         x: tl.gutter
         width: tl.width - tl.gutter; height: tl.height
+        clip: tl.zoomed
     Item {
         id: marks
         objectName: "scaleMarks"
@@ -252,39 +328,76 @@ Item {
         // labels in the top 13 px, then a gap, then the ticks: 8 px at a label, 4 px between
         height: 24
         readonly property int tickTop: 16
+        readonly property int k0: tl.ruler.step > 0 ? Math.ceil(tl.vA / tl.ruler.step - 1e-6) : 0     // the first label in view
         Canvas {
             id: ticks
             anchors.fill: parent
-            readonly property var key: [tl.ruler.step, tl.ruler.minor, tl.duration, width, Theme.inkDim]
+            readonly property var key: [tl.ruler.step, tl.ruler.minor, tl.duration, tl.vA, tl.vLen, width, Theme.inkDim]
             onKeyChanged: requestPaint()
             onPaint: {
                 var g = getContext("2d")
                 g.reset()
                 if (!(tl.ruler.step > 0)) return
-                var d = tl.ruler.step / tl.ruler.minor, n = Math.floor(tl.duration / d + 1e-6)
+                // only the ticks in view (zoomed in, a long file has a great many)
+                var d = tl.ruler.step / tl.ruler.minor
+                var i0 = Math.ceil(tl.vA / d - 1e-6), i1 = Math.floor(Math.min(tl.duration, tl.vA + tl.vLen) / d + 1e-6)
                 g.fillStyle = Theme.inkDim
-                for (var i = 0; i <= n; i++) {
+                for (var i = i0; i <= i1; i++) {
                     var major = i % tl.ruler.minor === 0
                     g.globalAlpha = major ? 1 : .55
-                    g.fillRect(Math.min(width - 1, Math.round(i * d / tl.duration * width)), major ? marks.tickTop : height - 4, 1,
+                    g.fillRect(Math.max(0, Math.min(width - 1, Math.round(tl.px(i * d)))), major ? marks.tickTop : height - 4, 1,
                                major ? height - marks.tickTop : 4)
                 }
             }
         }
         Repeater {
-            model: tl.ruler.step > 0 ? Math.floor(tl.duration / tl.ruler.step + 1e-6) + 1 : 0
+            model: tl.ruler.step > 0 ? Math.floor(Math.min(tl.duration, tl.vA + tl.vLen) / tl.ruler.step + 1e-6) - marks.k0 + 1 : 0
             Text {
                 objectName: "scaleLabel" + index
+                readonly property real t: (marks.k0 + index) * tl.ruler.step
                 // centred on its mark, pushed in at the ends
                 readonly property real over: Theme.tier ? width / 2 : 0     // the panel's 24 px margin holds half a label
-                x: Math.max(-over, Math.min(marks.width - width + over, index * tl.ruler.step / tl.duration * marks.width - width / 2))
-                text: tl.fmt(index * tl.ruler.step)
+                x: Math.max(-over, Math.min(marks.width - width + over, tl.px(t) - width / 2))
+                text: tl.fmt(t)
                 color: Theme.inkDim
                 font: marks.font
                 // a drawing's times lie over the scale: a label they would cut in half steps aside
                 visible: (!spanTag.visible || x + width < spanTag.x - 3 || x > spanTag.x + spanTag.width + 3)
                          && !tl.covered(x, width)
             }
+        }
+        // editor: the zoom's keys at the scale's end, on the labels' level: closer, farther, the
+        // whole file (only while zoomed); over a ground of their own, the labels step aside
+        Row {
+            id: zoomKeys
+            objectName: "zoomKeys"
+            visible: tl.editing && tl.duration > 0
+            anchors.right: parent.right
+            y: 0; height: 14
+            spacing: 2
+            component ZoomKey: Rectangle {
+                id: zk
+                property string icon: ""
+                property string tip: ""
+                property bool on: true
+                signal hit()
+                width: 18; height: 14; radius: 4
+                color: zkArea.containsMouse && on ? Theme.lineHi : Theme.groove
+                border.color: Theme.line
+                opacity: on ? 1 : .45
+                Icon { anchors.centerIn: parent; name: zk.icon; size: 11; stroke: 2
+                       color: zkArea.containsMouse && zk.on ? Theme.tx : Theme.tx2 }
+                MouseArea { id: zkArea; anchors.fill: parent; hoverEnabled: true
+                            cursorShape: zk.on ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: if (zk.on) zk.hit() }
+                Tip { text: zk.tip; shown: zkArea.containsMouse }
+            }
+            ZoomKey { objectName: "zoomFit"; visible: tl.zoomed; icon: "scan"; tip: L.t.t_zoom_fit
+                      onHit: tl.setView(0, tl.duration) }
+            ZoomKey { objectName: "zoomOut"; icon: "minus"; tip: L.t.t_zoom_out; on: tl.zoomed
+                      onHit: tl.zoomAt(1 / 0.5, tl.inView(tl.position) ? tl.px(tl.position) : area.width / 2) }
+            ZoomKey { objectName: "zoomIn"; icon: "plus"; tip: L.t.t_zoom_in; on: tl.vLen > tl.minView + 1e-6
+                      onHit: tl.zoomAt(0.5, tl.inView(tl.position) ? tl.px(tl.position) : area.width / 2) }
         }
         // editor: the edit has fragments in another file; a click opens it at the first of them
         Text {
@@ -293,7 +406,8 @@ Item {
             readonly property int n: tl.elsewhere.length
             readonly property var names: tl.elsewhere.map(e => e[1]).filter((v, i, a) => a.indexOf(v) === i)
             visible: tl.editing && n > 0
-            anchors.right: parent.right
+            anchors.right: zoomKeys.visible ? zoomKeys.left : parent.right
+            anchors.rightMargin: zoomKeys.visible ? 10 : 0
             y: -1
             text: L.t.tl_elsewhere.arg(n + " " + L.plural(n, L.t.frag_forms)).arg(names[0] || "")
                   + (names.length > 1 ? L.t.and_more : "") + "  →"
@@ -310,8 +424,8 @@ Item {
     Rectangle {
         objectName: "loopBand"
         visible: tl.loopA >= 0 && tl.loopB > tl.loopA && tl.duration > 0
-        x: tl.loopA / tl.duration * rail.width
-        width: Math.max(2, (tl.loopB - tl.loopA) / tl.duration * rail.width)
+        x: tl.px(tl.loopA)
+        width: Math.max(2, (tl.loopB - tl.loopA) / tl.vLen * rail.width)
         y: rail.y + 1; height: 3; radius: 1.5
         color: Theme.tx; opacity: .6
     }
@@ -347,25 +461,36 @@ Item {
         capWidth: 12
         bare: tl.editing
         enabled: tl.duration > 0
-        value: tl.duration > 0 ? tl.position / tl.duration : 0
+        value: tl.duration > 0 ? (tl.position - tl.vA) / tl.vLen : 0
         name: L.t.position
         valueText: tl.fmt(tl.position) + " / " + tl.fmt(tl.duration)
-        onMoved: (v) => tl.seekTo(v * tl.duration, false)
+        onMoved: (v) => tl.seekTo(tl.vA + v * tl.vLen, false)
+        property bool fitted: false     // the release after a double click's fit: no click
         onReleased: (v) => {
+            if (fitted) { fitted = false; return }
             // editing: a click (not a drag) on a fragment's block chooses it, which shows its start
-            var t = v * tl.duration, b = tl.bands.find(q => t >= q[0] && t <= q[1])
+            var t = tl.vA + v * tl.vLen, b = tl.bands.find(q => t >= q[0] && t <= q[1])
             if (tl.editing && b && Math.abs(v - rail.pressValue) * rail.width < 4) tl.fragPicked(b[3] - 1)
             else tl.seekTo(t, true)
         }
-        onHoverValueChanged: if (hovered && tl.previewOn) tl.hoverAt(hoverValue * tl.duration)
-        onHoveredChanged: if (hovered && tl.previewOn) tl.hoverAt(hoverValue * tl.duration)
+        // editing: a double click on a fragment's block fits it to the width; a short one in a long
+        // file is a 2 px block, so it is taken 4 px either side
+        onDoubleClicked: (v) => {
+            var x = v * rail.width, b = tl.bands.find(q => tl.px(q[0]) - 4 <= x && x <= Math.max(tl.px(q[1]), tl.px(q[0]) + 2) + 4)
+            // ... and chooses it, which shows its start: the frame is in the fitted view
+            if (tl.editing && b) { fitted = true; tl.followAfter = Date.now() + 600; tl.setView(b[0] - (b[1] - b[0]) * 0.05, (b[1] - b[0]) * 1.1); tl.fragPicked(b[3] - 1) }
+        }
+        onHoverValueChanged: if (hovered && tl.previewOn) tl.hoverAt(tl.vA + hoverValue * tl.vLen)
+        onHoveredChanged: if (hovered && tl.previewOn) tl.hoverAt(tl.vA + hoverValue * tl.vLen)
     }
     // the position as a tuning needle: from the ticks (under the labels, never through them)
     // down to the cap, with a small head
     readonly property real needleAt: headArea.pressed ? headArea.v : rail.shown
+    // zoomed in, the playhead may be out of view: then no needle (not one pinned to an edge)
+    readonly property bool needleIn: headArea.pressed || (tl.position >= tl.vA - 1e-3 && tl.position <= tl.vA + tl.vLen + 1e-3)
     Item {
         objectName: "needle"
-        visible: rail.enabled && tl.editing
+        visible: rail.enabled && tl.editing && area.needleIn
         x: Math.round(area.needleAt * rail.width) - 1
         y: marks.tickTop
         z: 1            // over the scale and the fragments' blocks: it is where the picture is
@@ -383,7 +508,7 @@ Item {
     MouseArea {
         id: headArea
         objectName: "needleHead"
-        visible: rail.enabled && tl.editing
+        visible: rail.enabled && tl.editing && area.needleIn
         property real v: 0
         x: Math.round(area.needleAt * rail.width) - width / 2
         width: 18; height: marks.height + tl.railGap
@@ -392,13 +517,13 @@ Item {
         preventStealing: true
         cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
         function at(mx) { return Math.max(0, Math.min(1, mapToItem(rail, mx, 0).x / rail.width)) }
-        onPressed: (m) => { v = at(m.x); tl.seekTo(v * tl.duration, false) }
-        onPositionChanged: (m) => { if (pressed) { v = at(m.x); tl.seekTo(v * tl.duration, false) } }
-        onReleased: (m) => { v = at(m.x); tl.seekTo(v * tl.duration, true) }
+        onPressed: (m) => { v = at(m.x); tl.seekTo(tl.vA + v * tl.vLen, false) }
+        onPositionChanged: (m) => { if (pressed) { v = at(m.x); tl.seekTo(tl.vA + v * tl.vLen, false) } }
+        onReleased: (m) => { v = at(m.x); tl.seekTo(tl.vA + v * tl.vLen, true) }
     }
     // ... and on down through the drawings' tracks, under their bars and their words
     Rectangle {
-        visible: rail.enabled && tl.editing && lane.visible
+        visible: rail.enabled && tl.editing && lane.visible && area.needleIn
         z: -0.5
         x: Math.round(area.needleAt * rail.width) - 1
         y: rail.y + rail.height
@@ -412,7 +537,7 @@ Item {
         Item {
             objectName: "loop" + modelData[0]
             visible: modelData[1] >= 0 && tl.duration > 0
-            x: modelData[1] / tl.duration * rail.width
+            x: tl.px(modelData[1])
             y: rail.y - 3
             Rectangle { x: -1; width: 2; height: rail.height + 5; color: Theme.tx }
             Rectangle {
@@ -429,8 +554,8 @@ Item {
         model: tl.duration > 0 ? tl.skips : []
         Item {
             objectName: "skipBand" + index
-            x: modelData[0] / tl.duration * rail.width
-            width: Math.max(3, (modelData[1] - modelData[0]) / tl.duration * rail.width)
+            x: tl.px(modelData[0])
+            width: Math.max(3, (modelData[1] - modelData[0]) / tl.vLen * rail.width)
             y: rail.y + (rail.height - 9) / 2; height: 9
             Rectangle { anchors.fill: parent; radius: 3; color: Theme.light ? Qt.rgba(0, 0, 0, .28) : Qt.rgba(1, 1, 1, .3) }
             Rectangle { width: 2; height: parent.height; color: Theme.tx2 }
@@ -440,7 +565,7 @@ Item {
     Repeater {
         model: tl.duration > 0 ? tl.chapters : []
         Rectangle {
-            x: modelData.time / tl.duration * rail.width - 1
+            x: tl.px(modelData.time) - 1
             y: rail.y + 1; width: 2; height: 3; color: Theme.tx2
         }
     }
@@ -450,8 +575,8 @@ Item {
         model: tl.outside
         Item {
             objectName: "outside" + index
-            x: modelData[0] / tl.duration * rail.width
-            width: Math.max(2, (modelData[1] - modelData[0]) / tl.duration * rail.width)
+            x: tl.px(modelData[0])
+            width: Math.max(2, (modelData[1] - modelData[0]) / tl.vLen * rail.width)
             y: rail.y + 1; height: rail.height - 2
             clip: true
             // what stays out of the file: the track's hatch, a shade deeper
@@ -473,8 +598,8 @@ Item {
             Accessible.name: L.t.es_frag_n.arg(row + 1).arg(info.name || "").arg(info.range || "")
             Accessible.selected: sel
             Accessible.selectable: true
-            x: modelData[0] / tl.duration * rail.width
-            width: Math.max(2, (modelData[1] - modelData[0]) / tl.duration * rail.width)
+            x: tl.px(modelData[0])
+            width: Math.max(2, (modelData[1] - modelData[0]) / tl.vLen * rail.width)
             y: rail.y; height: rail.height
             radius: 6
             color: Theme.accA(sel ? .28 : .16)
@@ -484,7 +609,7 @@ Item {
                 objectName: "bandLead" + index
                 visible: modelData[2] > modelData[0] + 0.05
                 x: 2; y: 2
-                width: visible ? (modelData[2] - modelData[0]) / tl.duration * rail.width : 0
+                width: visible ? (modelData[2] - modelData[0]) / tl.vLen * rail.width : 0
                 height: parent.height - 4; clip: true
                 Row {
                     spacing: 2
@@ -528,8 +653,8 @@ Item {
             readonly property bool sel: row === tl.fragSel
             readonly property color fill: Qt.tint(tl.clipGround, Theme.accA(sel ? .28 : .16))
             z: 1
-            x: modelData[0] / tl.duration * rail.width
-            width: Math.max(2, (modelData[1] - modelData[0]) / tl.duration * rail.width)
+            x: tl.px(modelData[0])
+            width: Math.max(2, (modelData[1] - modelData[0]) / tl.vLen * rail.width)
             y: rail.y; height: rail.height
             Rectangle {
                 visible: wordRow.visible
@@ -689,13 +814,15 @@ Item {
             color: Theme.tx; font.family: Theme.monoFont; font.pixelSize: 10
         }
     }
-    // time under the pointer, with its frame above it
+    }
+    // time under the pointer, with its frame above it (outside the track's area, which zoomed in
+    // cuts what lies beyond it)
     Rectangle {
         id: hoverCard
         objectName: "seekPreview"
         readonly property bool pic: tl.previewOn && tl.previewSource !== ""
         visible: rail.hovered && tl.duration > 0
-        x: Math.max(0, Math.min(area.width - width, rail.hoverValue * rail.width - width / 2))
+        x: area.x + Math.max(0, Math.min(area.width - width, rail.hoverValue * rail.width - width / 2))
         y: -height - 4
         width: pic ? frame.width + 8 : hoverLabel.implicitWidth + 12
         height: pic ? frame.height + 26 : 20
@@ -714,9 +841,8 @@ Item {
         Text {
             id: hoverLabel
             anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 3 }
-            text: tl.fmt(rail.hoverValue * tl.duration)
+            text: tl.fmt(tl.vA + rail.hoverValue * tl.vLen)
             color: Theme.tx; font.family: Theme.uiFont; font.pixelSize: 11
         }
-    }
     }
 }

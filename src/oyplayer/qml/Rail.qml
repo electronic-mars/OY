@@ -19,6 +19,7 @@ Item {
     property string valueText: ""          // …and where it stands, in words
     signal moved(real v)        // while dragging
     signal released(real v)     // on release
+    signal doubleClicked(real v)
 
     implicitHeight: 16
     Accessible.role: Accessible.Slider
@@ -96,6 +97,7 @@ Item {
         onPressed: (m) => { rail.dragValue = rail.pressValue = at(m.x); rail.moved(rail.dragValue) }
         onPositionChanged: (m) => { if (pressed) { rail.dragValue = at(m.x); rail.moved(rail.dragValue) } }
         onReleased: (m) => rail.released(at(m.x))
+        onDoubleClicked: (m) => rail.doubleClicked(at(m.x))
         onWheel: (w) => w.accepted = false
     }
 }

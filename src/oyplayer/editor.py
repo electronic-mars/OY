@@ -335,6 +335,8 @@ class Editor(NoteEdits):
         self._cancelled = False
         self._progress = 0.0
         self._saved = ""
+        self._saved_state = None     # what the last successful save held (_content); None: nothing saved
+        self._job_state = None       # what the save running now holds
         self._error = ""             # why the last save failed, shown on the strip until the next try
         self.lastLossless = None     # how the last save was made (the self-test reads it)
         self._undo = []              # (what, state before it), newest last
@@ -440,6 +442,17 @@ class Editor(NoteEdits):
         if self.codec == "copy":
             return tr("note_reencode_why", tr("note_drawings_over") if self._overlaid() else tr("why_formats"))
         return tr("note_reencode", {"h264": "H.264", "h265": "H.265"}[self.codec])
+
+    def _content(self):
+        """What goes into the file: the fragments, the drawings, the turn and the frame."""
+        return (self.frags, self._notes, self._rotate, self._frame)
+
+    @Property(bool, notify=changed)
+    def finished(self):
+        """The edit as it is now has been saved: the next piece can start from the whole file,
+        and closing the editor ends this edit (the owner, 20.11: five pieces from one long video
+        in one viewing). An edit changed after its save is unsaved work again."""
+        return self._saved_state is not None and bool(self.frags) and self._content() == self._saved_state
 
     @Property(int, notify=changed)
     def previewing(self):
@@ -576,6 +589,10 @@ class Editor(NoteEdits):
 
     @Slot()
     def close(self):
+        """Out of the editor. An unsaved edit stays for Ctrl+E; a saved one is done, and the
+        next Ctrl+E starts from the whole file (Ctrl+Z brings the saved edit back)."""
+        if self.finished and not self.exporting:
+            self._restart()
         self._preview = -1
         self._active = False
         self._apply_view()
@@ -907,6 +924,25 @@ class Editor(NoteEdits):
             self._show(row, play=False)
             self.changed.emit()
 
+    def _restart(self):
+        """The edit emptied: no pieces, no drawings (the turn and the frame stay: the same video)."""
+        self._mark(tr("undo_next_piece"))
+        self.frags, self._notes = [], []
+        self._selected, self._noteSel, self._cue, self._preview = -1, -1, -1, -1
+
+    @Slot()
+    def nextPiece(self):
+        """After a save: the edit starts again from the whole playing file, where it stands."""
+        if not self.p.hasFile or self.exporting:
+            return
+        self._restart()
+        if self._tools():
+            self._ensure(self.p.path)
+        self._apply_view()
+        log.info("edit: the next piece from %s", self.p.path)
+        self.p.osdMessage.emit(tr("osd_next_piece"))
+        self.changed.emit()
+
     @Slot()
     def clear(self):
         """The edit back to the whole playing file (the right button on the bin)."""
@@ -1049,6 +1085,7 @@ class Editor(NoteEdits):
         job = (self.lossless, "h264" if self.codec == "copy" else self.codec,
                [dict(f, kf=self._kf(f)) for f in self.frags], copy.deepcopy(self._notes))
         self._part = part
+        self._job_state = copy.deepcopy(self._content())
         self._thread = threading.Thread(target=self._run, args=(job, part, final, self.total), daemon=True)
         self._thread.start()
         self.changed.emit()
@@ -1178,6 +1215,7 @@ class Editor(NoteEdits):
         self._thread = self._proc = None
         if ok:
             self._saved = text
+            self._saved_state = self._job_state
             log.info("export saved %s", text)
             self.p.osdMessage.emit(tr("osd_saved", Path(text).name))
         elif self._cancelled:

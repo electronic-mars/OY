@@ -1522,9 +1522,11 @@ class SelfTest(QObject):
                    f"distance to orange: outline at 4 s={e_on} inside={i_on} outline at 9 s={e_off}")
 
     def s_dr_closed(self):
-        self.check("Esc closes the editor; drawings and fragments stay for next time",
-                   not self.ed.active and len(self.ed.notes) == 3 and len(self.ed.frags) == 1
-                   and not self.find_item("noteLayer").isVisible() and not self.find_item("drawBar").isVisible())
+        # the edit was just saved: closing ends it (an unsaved one stays: fb5)
+        self.check("Esc closes the editor; the edit just saved is done, the next Ctrl+E starts afresh",
+                   not self.ed.active and len(self.ed.notes) == 0 and len(self.ed.frags) == 0
+                   and not self.find_item("noteLayer").isVisible() and not self.find_item("drawBar").isVisible(),
+                   f"notes={len(self.ed.notes)} frags={len(self.ed.frags)}")
 
     # ---- ideas: frame preview, A-B repeat, tracks and volume per file
     def rail_pt(self, frac):
@@ -5132,11 +5134,152 @@ class SelfTest(QObject):
         return [
             (0, lambda: self.pl.add([str(Path(self.media).parent / "test_long.mkv")], True)),
             (1500, lambda: setattr(self.p.mpv, "pause", True)),
-            (0, lambda: None if self.ed.active else self.key("E", Qt.ControlModifier)), (900, self.s_fb5_head),
+            (0, lambda: None if self.ed.active else self.key("E", Qt.ControlModifier)),
+            (600, lambda: self.ed.nextPiece()), (900, self.s_fb5_head),     # an edit of this file alone
             (0, self.s_fb5_drag), (900, self.s_fb5_dragged),
             (0, lambda: self.key("Enter")), (3600, self.s_fb5_fs), (0, lambda: self.key("Esc")),
-            (900, lambda: self.ed.close()), (300, self.s_fb5_names),
+            # the timeline's zoom: Alt+wheel round the pointer (both ways Windows may send it), the keys,
+            # the playhead kept in sight, the whole file again
+            (900, lambda: self.p.seek(30.0)), (700, self.s_fb5_zoom_wheel), (400, self.s_fb5_zoomed),
+            (0, self.s_fb5_zoom_keys), (400, self.s_fb5_zoom_closest), (0, lambda: self.p.seek(60.0)),
+            (900, self.s_fb5_zoom_follow), (0, lambda: self.click_item(self.find_item("zoomFit"))), (400, self.s_fb5_zoom_fit),
+            # the next piece: a piece cut and saved, then the whole video again from where it stands
+            (0, lambda: self.p.seek(10.0)), (600, lambda: self.key("I")), (0, lambda: self.p.seek(20.0)),
+            (600, lambda: self.key("O")), (300, self.until(lambda: not self.ed.pending, 10, 50)),
+            (0, self.s_fb5_fit_block), (400, self.s_fb5_fitted),
+            (0, lambda: self.ed.saveHere()), (500, self.until(lambda: not self.ed.exporting, 30, 100)),
+            (300, self.s_fb5_saved), (0, lambda: self.click_item(self.find_item("editNextPiece"))),
+            (500, self.s_fb5_next), (0, lambda: self.ed.undo()), (300, self.s_fb5_undone),
+            (0, lambda: self.ed.close()), (300, lambda: self.key("E", Qt.ControlModifier)), (600, self.s_fb5_reopened),
+            (0, lambda: self.p.seek(40.0)), (600, lambda: self.key("I")), (300, self.until(lambda: not self.ed.pending, 10, 50)),
+            (0, lambda: self.ed.close()), (300, lambda: self.key("E", Qt.ControlModifier)), (600, self.s_fb5_kept),
+            (0, self.s_fb5_piece_clean), (900, lambda: self.ed.close()), (300, self.s_fb5_names),
         ]
+
+    def fb5_wheel(self, notches, sideways):
+        """Alt+wheel over the clip track at the playhead, one event per notch."""
+        rail = self.find_item("seekRail")
+        tl = self.find_item("timeline")
+        at = rail.mapToScene(QPointF(rail.property("shown") * rail.width(), rail.height() / 2))
+        self.fb5_at = (tl.property("position"), at.x())
+        for _ in range(abs(notches)):
+            d = 120 if notches > 0 else -120
+            ev = QWheelEvent(at, QPointF(self.win.mapToGlobal(at.toPoint())), QPoint(),
+                             QPoint(d, 0) if sideways else QPoint(0, d),
+                             Qt.NoButton, Qt.AltModifier, Qt.NoScrollPhase, False)
+            QGuiApplication.sendEvent(self.win, ev)
+
+    def s_fb5_zoom_wheel(self):
+        tl = self.find_item("timeline")
+        self.fb5_panel = self.win.property("panelH")
+        self.fb5_len0 = tl.property("vLen")
+        self.fb5_wheel(2, False)
+        self.fb5_wheel(1, True)
+
+    def s_fb5_zoomed(self):
+        tl, rail = self.find_item("timeline"), self.find_item("seekRail")
+        t, x = self.fb5_at
+        x_now = rail.mapToScene(QPointF((t - tl.property("vA")) / tl.property("vLen") * rail.width(), 0)).x()
+        labels = [it.property("text") for it in self.find_items_prefix("scaleLabel") if it.isVisible()]
+        want = self.fb5_len0 * 0.7 ** 3
+        self.check("editing, Alt+wheel over the timeline zooms in round the pointer (up and sideways alike): "
+                   "the time under it stays, the scale is finer, the whole file shows in small at the left",
+                   tl.property("zoomed") is True and abs(tl.property("vLen") - want) < 0.5 and abs(x_now - x) <= 2
+                   and len(labels) >= 3 and len(set(labels)) == len(labels)
+                   and self.find_item("zoomOverview").isVisible() and not self.find_item("trackHeader").isVisible()
+                   and self.win.property("panelH") == self.fb5_panel,
+                   f"len {self.fb5_len0:.1f}->{tl.property('vLen'):.2f} (want {want:.2f}) x {x:.0f}->{x_now:.0f} "
+                   f"labels={labels} panel {self.fb5_panel}->{self.win.property('panelH')}")
+        self.shot("fb5_02_zoomed")
+
+    def find_items_prefix(self, prefix, item=None, out=None):
+        item, out = item or self.win.contentItem(), [] if out is None else out
+        if item.objectName().startswith(prefix):
+            out.append(item)
+        for child in item.childItems():
+            self.find_items_prefix(prefix, child, out)
+        return out
+
+    def s_fb5_zoom_keys(self):
+        for _ in range(20):        # a key that cannot go closer does nothing
+            self.click_item(self.find_item("zoomIn"))
+
+    def s_fb5_zoom_closest(self):
+        tl = self.find_item("timeline")
+        all_labels = [(it.property("text"), it.isVisible(), round(it.x())) for it in self.find_items_prefix("scaleLabel")]
+        labels = [it.property("text") for it in self.find_items_prefix("scaleLabel") if it.isVisible()]
+        self.check("the + key zooms in down to two seconds across, the needle in view, a label a second",
+                   abs(tl.property("vLen") - 2.0) < 0.01 and self.find_item("needle").isVisible()
+                   and len(labels) >= 2 and len(set(labels)) == len(labels),
+                   f"len={tl.property('vLen'):.2f} view from {tl.property('vA'):.2f} labels={all_labels} "
+                   f"step={tl.property('ruler').toVariant() if hasattr(tl.property('ruler'), 'toVariant') else tl.property('ruler')}")
+        self.shot("fb5_03_closest")
+
+    def s_fb5_zoom_follow(self):
+        tl = self.find_item("timeline")
+        a, n = tl.property("vA"), tl.property("vLen")
+        self.check("zoomed in, the view follows the playhead when it goes out of sight",
+                   a <= self.st("position") <= a + n and self.find_item("needle").isVisible(),
+                   f"view {a:.1f}+{n:.1f} position {self.st('position'):.1f}")
+
+    def s_fb5_zoom_fit(self):
+        tl = self.find_item("timeline")
+        self.check("the whole-file key takes the zoom back: the header and the full scale again",
+                   tl.property("zoomed") is False and self.find_item("trackHeader").isVisible()
+                   and abs(tl.property("vLen") - self.st("duration")) < 0.01,
+                   f"zoomed={tl.property('zoomed')} len={tl.property('vLen')}")
+
+    def s_fb5_fit_block(self):
+        block = self.find_item("frag0")
+        self.fb5_frag = [round(f["from"], 1) for f in self.ed.fragments][:1] + [round(self.ed.fragments[0]["end"], 1)]
+        c = block.mapToScene(QPointF(block.width() / 2, block.height() / 2))
+        QTest.mouseDClick(self.win, Qt.LeftButton, Qt.NoModifier, QPoint(int(c.x()), int(c.y())))
+
+    def s_fb5_fitted(self):
+        tl = self.find_item("timeline")
+        a, b = self.fb5_frag
+        self.check("a double click on a fragment's block fits it to the timeline's width",
+                   tl.property("zoomed") is True and tl.property("vA") <= a and tl.property("vA") + tl.property("vLen") >= b
+                   and tl.property("vLen") <= (b - a) * 1.2,
+                   f"fragment {a}-{b} view {tl.property('vA'):.1f}+{tl.property('vLen'):.1f}")
+
+    def s_fb5_saved(self):
+        row, key = self.find_item("editFinished"), self.find_item("editNextPiece")
+        self.fb5_saved_frags = self.frags()
+        self.fb5_pos = self.st("position")
+        save = self.find_item("editSave")
+        gap = key.mapToScene(QPointF(0, 0)).x() - save.mapToScene(QPointF(save.width(), 0)).x()
+        self.check("after a save the strip says it is saved and offers the next piece, beside Save",
+                   self.ed.finished and self.ed.saved != "" and row.property("visible") is True and key.isVisible()
+                   and 0 <= gap <= 16, f"finished={self.ed.finished} saved={Path(self.ed.saved).name} "
+                   f"frags={self.fb5_saved_frags} gap to Save={gap:.0f}")
+        self.shot("fb5_04_saved")
+
+    def s_fb5_next(self):
+        whole = [("test_long.mkv", 0.0, round(self.st("duration"), 1))]
+        self.check("«Next piece»: the whole video again, the picture where it was, nothing to save yet",
+                   self.frags() == whole and not self.ed.notes and not self.ed.finished
+                   and abs(self.st("position") - self.fb5_pos) < 0.2 and not self.find_item("editFinished").isVisible(),
+                   f"frags={self.frags()} position {self.fb5_pos:.2f}->{self.st('position'):.2f}")
+        self.shot("fb5_05_next_piece")
+
+    def s_fb5_undone(self):
+        self.check("Ctrl+Z after «Next piece» brings the saved edit back, still saved",
+                   self.frags() == self.fb5_saved_frags and self.ed.finished, f"frags={self.frags()}")
+
+    def s_fb5_reopened(self):
+        self.check("closing a saved edit ends it: Ctrl+E starts from the whole video",
+                   self.ed.active and self.frags() == [("test_long.mkv", 0.0, round(self.st("duration"), 1))],
+                   f"frags={self.frags()}")
+
+    def s_fb5_kept(self):
+        self.check("an edit changed since its save is unsaved work: closing keeps it for Ctrl+E",
+                   self.ed.active and len(self.frags()) == 1 and self.frags()[0][1] >= 30.0, f"frags={self.frags()}")
+
+    def s_fb5_piece_clean(self):
+        if self.ed.saved:
+            Path(self.ed.saved).unlink(missing_ok=True)
+        self.ed.clear()
 
     def s_fb5_head(self):
         head, rail = self.find_item("needleHead"), self.find_item("seekRail")
