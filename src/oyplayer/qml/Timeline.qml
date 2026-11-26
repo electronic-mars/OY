@@ -384,7 +384,7 @@ Item {
             }
         }
         Repeater {
-            model: tl.ruler.step > 0 ? Math.floor(Math.min(tl.duration, tl.vA + tl.vLen) / tl.ruler.step + 1e-6) - marks.k0 + 1 : 0
+            model: tl.ruler.step > 0 ? Math.max(0, Math.floor(Math.min(tl.duration, tl.vA + tl.vLen) / tl.ruler.step + 1e-6) - marks.k0 + 1) : 0
             Text {
                 objectName: "scaleLabel" + index
                 readonly property real t: (marks.k0 + index) * tl.ruler.step

@@ -5602,15 +5602,20 @@ class SelfTest(QObject):
             # its end dragged out to 35 s; one undo step
             (0, lambda: self.s_fb6_edge("b", 35.0)), (500, self.s_fb6_edged), (0, lambda: self.ed.undo()),
             (300, self.s_fb6_edge_undone), (0, lambda: self.s_fb6_edge("b", 35.0)), (500, lambda: None),
-            # split at 20 (a keyframe), a logo over it, each piece to its own file
+            # its start dragged back to 5 s: copied without loss, it begins at the keyframe before (0 s)
+            (0, lambda: self.s_fb6_edge("a", 5.0)), (300, self.until(lambda: not self.ed.pending, 10, 50)),
+            (300, self.s_fb6_start_edged), (0, lambda: self.ed.undo()), (300, self.s_fb6_start_undone),
+            # split at 20 (a keyframe); each piece to its own file without loss, then again with a logo over it
             (0, lambda: self.p.seek(20.0)), (600, lambda: self.key("X")), (300, self.until(lambda: not self.ed.pending, 10, 50)),
-            (0, self.s_fb6_logo), (300, self.s_fb6_pieces_key), (0, lambda: self.a.run("edit_save_pieces")),
+            (0, self.s_fb6_pieces_key), (0, lambda: self.a.run("edit_save_pieces")),
+            (500, self.until(lambda: not self.ed.exporting, 60, 100)), (300, self.s_fb6_pieces_copy),
+            (0, self.s_fb6_logo), (300, lambda: self.a.run("edit_save_pieces")),
             (500, self.until(lambda: not self.ed.exporting, 60, 100)), (300, self.s_fb6_pieces),
             # N now: the whole video again, the logo kept
             (0, lambda: self.key("N")), (400, self.s_fb6_next), (0, self.s_fb6_clean),
             # a screenshot to draw on, from its own command, whatever the screenshot key does
             (0, lambda: self.settings.set("shotMode", "file")), (0, lambda: self.ed.close()), (300, lambda: self.p.seek(12.0)),
-            (600, lambda: self.a.run("screenshot_draw")), (900, self.s_fb6_shot_cmd),
+            (600, lambda: self.key("F12", Qt.ShiftModifier)), (900, self.s_fb6_shot_cmd),
             (0, lambda: self.shot_window().close()), (300, self.s_shf_prep),
             (0, lambda: self.a.run("screenshot")), (800, self.s_fb6_toast),
             (0, lambda: self.click_item(self.find_item("shotToastDraw"))), (900, self.s_fb6_toast_drawn),
@@ -5659,6 +5664,29 @@ class SelfTest(QObject):
 
     def s_fb6_edge_undone(self):
         self.check("Ctrl+Z puts the dragged end back", self.frags() == [("test_long.mkv", 10.0, 30.0)], f"frags={self.frags()}")
+
+    def s_fb6_start_edged(self):
+        f = self.ed.fragments
+        self.check("a fragment's start dragged earlier, copied without loss: it begins at the keyframe before, "
+                   "as one undo step", len(f) == 1 and abs(f[0]["from"]) < 0.05 and abs(f[0]["end"] - 35.0) < 0.3
+                   and len(self.ed._undo) == self.fb6_undo + 1,
+                   f"from={f[0]['from'] if f else None} end={f[0]['end'] if f else None} undo {self.fb6_undo}->{len(self.ed._undo)}")
+
+    def s_fb6_start_undone(self):
+        f = self.ed.fragments
+        self.check("Ctrl+Z puts the dragged start back", len(f) == 1 and abs(f[0]["from"] - 10.0) < 0.05,
+                   f"from={f[0]['from'] if f else None}")
+
+    def s_fb6_pieces_copy(self):
+        files = sorted(Path(self.media).parent.glob("test_long (*"))
+        names = [p.name for p in files]
+        durs = [round(probe(str(p))["duration"]) for p in files]
+        self.check("each piece to a file of its own without loss: the source's container, named by its times",
+                   names == ["test_long (edit 0m10s-0m20s).mkv", "test_long (edit 0m20s-0m34s).mkv"]
+                   and durs == [10, 15] and self.ed.finished and self.ed.error == "",
+                   f"files={names} lengths={durs} finished={self.ed.finished} error={self.ed.error}")
+        for p in files:
+            p.unlink(missing_ok=True)
 
     def s_fb6_logo(self):
         png = self.out / "fb6_logo.png"
