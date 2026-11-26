@@ -205,6 +205,8 @@ Window {
             if (settings.values.shotMode !== "edit") { player.screenshot(app.screenshotDir); return }
             shot.open()
         }
+        // to draw on, whatever the screenshot key does (the owner, 25.11)
+        function onShotDrawRequested() { shot.open() }
         // P is the List: with History or Radio open it turns to the List rather than closing
         function onTogglePlaylistRequested() {
             if (win.playlistShown && playlistPanel.tab !== 0) playlistPanel.tab = 0
@@ -350,6 +352,7 @@ Window {
             { text: L.t.act_video_panel, icon: Theme.icVideo, keys: "Shift+V", enabled: player.hasFile, run: () => videoPanel.open() },
             { separator: true },
             { text: L.t.cm_shot, icon: Theme.icCamera, keys: "F12", enabled: player.hasFile, run: () => actions.run("screenshot") },
+            { text: L.t.act_screenshot_draw, icon: Theme.icPen, keys: "Shift+F12", enabled: player.hasFile, run: () => actions.run("screenshot_draw") },
             { text: L.t.act_file_info, icon: Theme.icInfo, keys: "Alt+I", enabled: player.hasFile, run: () => actions.run("file_info") }]
         popMenu(pictureMenu, null, at)
     }
@@ -662,6 +665,7 @@ Window {
     ShotToast {
         id: shotToast
         z: 6
+        canDraw: true
         anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: win.panelH + 12 }
     }
 
@@ -874,7 +878,8 @@ Window {
             fragSel: editor.selected
             fragInfo: editor.active ? editor.fragments : []
             fragFocus: win.area === "strip"
-            onFragPicked: (row) => { editor.select(row); win.area = "strip" }
+            onFragPicked: (row, at) => { editor.pick(row, at); win.area = "strip" }
+            onBorderMoved: (row, side, t) => editor.setBorder(row, side, t)
             noteLane: editor.active
             notes: JSON.parse(win.laneNotes)
             noteSel: editor.noteSel

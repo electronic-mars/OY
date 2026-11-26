@@ -6,6 +6,7 @@ FloatCard {
     id: toast
     objectName: "shotToast"
     property string path: ""
+    property bool canDraw: false        // the player's toast: the saved file opens to draw on (not the shot window's own)
     readonly property string fileName: path.substring(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1)
     function show(p) { path = p; opacity = 1; hold.restart() }
     width: Math.min(row.implicitWidth + 24, parent.width - 24)
@@ -24,10 +25,19 @@ FloatCard {
         Text {
             objectName: "shotToastName"
             anchors.verticalCenter: parent.verticalCenter
-            width: Math.min(implicitWidth, toast.parent.width - 24 - 24 - 16 - 24 - openKey.width)
+            width: Math.min(implicitWidth, toast.parent.width - 24 - 24 - 16 - 24 - openKey.width
+                            - (drawKey.visible ? drawKey.width + 12 : 0))
             elide: Text.ElideMiddle
             text: toast.fileName
             color: Theme.tx; font.family: Theme.uiFont; font.pixelSize: 13
+        }
+        PillButton {
+            id: drawKey
+            objectName: "shotToastDraw"
+            visible: toast.canDraw
+            anchors.verticalCenter: parent.verticalCenter
+            text: L.t.shot_draw
+            onClicked: { shot.openFile(toast.path); toast.opacity = 0 }
         }
         PillButton {
             id: openKey

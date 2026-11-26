@@ -59,6 +59,13 @@ def fmt(s):
     return f"{int(s // 60)}:{s % 60:04.1f}"
 
 
+def stamp(s):
+    """A time for a file's name, without the colons Windows forbids: 12m30s, 1h02m03s."""
+    s = int(max(0.0, s))
+    h, m, sec = s // 3600, s % 3600 // 60, s % 60
+    return f"{h}h{m:02d}m{sec:02d}s" if h else f"{m}m{sec:02d}s"
+
+
 def probe(path):
     """What saving needs to know about a file."""
     r = subprocess.run([_FFPROBE, "-v", "error", "-show_streams", "-show_format", "-of", "json", path],
@@ -301,7 +308,7 @@ class Editor(NoteEdits):
     changed = Signal()
     saveRequested = Signal()          # QML asks where to save
     _progressed = Signal(float)
-    _done = Signal(bool, str)
+    _done = Signal(bool, str, int)                # ok, the (last) file or why not, files saved
     _found = Signal(str, float, float, object)   # path, start, keyframe, probe: from the reading thread
 
     def __init__(self, player):
@@ -327,7 +334,7 @@ class Editor(NoteEdits):
         self._kfs = {}               # (path, start) -> the keyframe at or before start
         self._asked = set()          # (path, start) being read
         self._reader = ThreadPoolExecutor(max_workers=1)
-        self._queued = ""            # a save asked for while keyframes were still being read
+        self._queued = []            # [the file, or None: each piece] asked for while keyframes were still being read
         self._preview = -1           # fragment the preview is playing; -1 = off
         self._armed = False          # the preview has seen the player inside that fragment
         self._proc = None
@@ -538,8 +545,8 @@ class Editor(NoteEdits):
             self._snap_border(path, start, kf)
         self.changed.emit()
         if self._queued and not self.pending:
-            url, self._queued = self._queued, ""
-            self.exportTo(url)
+            url, self._queued = self._queued[0], []
+            self._save(url)
 
     def setCodec(self, codec):
         self.codec = codec
@@ -917,12 +924,42 @@ class Editor(NoteEdits):
 
     @Slot(int)
     def select(self, row):
-        """A click on a fragment shows its first frame; Space then plays the edit from it."""
+        """A fragment chosen from the keyboard shows its first frame; Space then plays the edit
+        from it."""
         if 0 <= row < len(self.frags):
             self._choose(frag=row)
             self._cue = row
             self._show(row, play=False)
             self.changed.emit()
+
+    @Slot(int, float)
+    def pick(self, row, t):
+        """A click on a fragment's block: chosen, and the frame clicked shows (the owner, 25.11:
+        the click went to the piece's start); Space plays the edit on from there."""
+        if 0 <= row < len(self.frags):
+            self._choose(frag=row)
+            self._cue = row
+            self.p.mpv.pause = True
+            self.p.seek(t)
+            self.changed.emit()
+
+    @Slot(int, str, float)
+    def setBorder(self, row, side, t):
+        """A fragment's end dragged on the clip track ("a" its start, "b" its end): out or in, as
+        I and O do it. Copied without loss, a start then moves to its keyframe."""
+        if not 0 <= row < len(self.frags):
+            return
+        f, key = self.frags[row], "start" if side == "a" else "end"
+        if abs(f[key] - t) < 1e-3:
+            return
+        self._mark(tr("undo_in" if key == "start" else "undo_out", fmt(t)))
+        f[key] = t
+        self._choose(frag=row)
+        self._preview = -1
+        if key == "start":
+            self._border(f["path"], t, False)
+        log.info("edit border %d %s -> %.2f", row, key, t)
+        self.changed.emit()
 
     def _restart(self):
         """The edit emptied: no pieces, no drawings (the turn and the frame stay: the same video)."""
@@ -935,7 +972,9 @@ class Editor(NoteEdits):
         """After a save: the edit starts again from the whole playing file, where it stands."""
         if not self.p.hasFile or self.exporting:
             return
+        logos = [n for n in self._notes if n["kind"] == "image" and n["path"] == self.p.path]
         self._restart()
+        self._notes = logos      # a logo belongs to every piece of the video, not to the one saved
         if self._tools():
             self._ensure(self.p.path)
         self._apply_view()
@@ -1040,16 +1079,22 @@ class Editor(NoteEdits):
     # ---- saving
     @Slot(result=str)
     def suggestedPath(self):
-        if not self.frags:
-            return ""
-        src = Path(self.frags[0]["path"])
+        return str(self._name_for(self.frags)) if self.frags else ""
+
+    def _name_for(self, frags, taken=()):
+        """Beside the first fragment's file, under a name not taken: a single piece carries its
+        times (the owner, 25.11: five pieces of one video, told apart by name), «Film (edit
+        12m30s-13m05s).mp4»; a join of several pieces is numbered."""
+        src = Path(frags[0]["path"])
         ext = (src.suffix.lower() if src.suffix.lower() in COPY_EXT else ".mkv") if self.lossless else ".mp4"
         word = tr("edit_suffix")
+        if len(frags) == 1:
+            word += " " + stamp(self._from(frags[0])) + "-" + stamp(frags[0]["end"])
         n, out = 1, src.with_name(f"{src.stem} ({word}){ext}")
-        while out.exists():
+        while out.exists() or out in taken:
             n += 1
             out = src.with_name(f"{src.stem} ({word} {n}){ext}")
-        return str(out)
+        return out
 
     @Slot()
     def requestSave(self):
@@ -1064,35 +1109,51 @@ class Editor(NoteEdits):
         if self.frags and not self.exporting:
             self.exportTo(self.suggestedPath())
 
+    @Slot()
+    def savePieces(self):
+        """Each fragment to a file of its own beside its source (the owner, 25.11: five pieces of
+        one long video, marked in one viewing, saved at one go)."""
+        if len(self.frags) > 1 and not self.exporting:
+            self._save(None)
+
     @Slot(str)
     def exportTo(self, url):
+        self._save(url)
+
+    def _save(self, url):
+        """url: the whole edit into that file; None: each fragment into its own."""
         if not self.frags or self.exporting or not self._tools():
             return
-        final = Path(to_path(url))
-        if any(final.resolve() == Path(f["path"]).resolve() for f in self.frags):
+        if url is not None and any(Path(to_path(url)).resolve() == Path(f["path"]).resolve() for f in self.frags):
             self.p.osdMessage.emit(tr("osd_no_overwrite"))
             return
         self._preview = -1
         self._cancelled, self._progress, self._saved, self._error = False, 0.0, "", ""
         if self.pending:
-            self._queued = url         # saved as soon as the last keyframe is known
+            self._queued = [url]       # saved as soon as the last keyframe is known
             self.changed.emit()
             return
-        part = final.with_name(final.stem + ".part" + final.suffix)
         self.lastLossless = self.lossless
+        frags = [dict(f, kf=self._kf(f)) for f in self.frags]
+        if url is None:
+            names = []
+            for f in frags:
+                names.append(self._name_for([f], names))
+            pieces = [([f], name, f["end"] - self._from(f)) for f, name in zip(frags, names)]
+        else:
+            pieces = [(frags, Path(to_path(url)), self.total)]
         # The command (ffprobe for a format not read, the encoder check, the drawings' PNGs)
         # is made in the export thread: none of it may hold the picture still.
         job = (self.lossless, "h264" if self.codec == "copy" else self.codec,
-               [dict(f, kf=self._kf(f)) for f in self.frags], copy.deepcopy(self._notes))
-        self._part = part
+               copy.deepcopy(self._notes), self._rotate, self._frame)
         self._job_state = copy.deepcopy(self._content())
-        self._thread = threading.Thread(target=self._run, args=(job, part, final, self.total), daemon=True)
+        self._thread = threading.Thread(target=self._run, args=(job, pieces), daemon=True)
         self._thread.start()
         self.changed.emit()
 
-    def _command(self, job, part, work):
-        lossless, codec, frags, notes = job
-        cmd = self._copy_command(work, frags) if lossless else self._encode_command(codec, work, frags, notes)
+    def _command(self, job, frags, part, work):
+        lossless, codec, notes, rot, frame = job
+        cmd = self._copy_command(work, frags) if lossless else self._encode_command(codec, work, frags, notes, rot, frame)
         cmd = [_FFMPEG, "-hide_banner", "-nostdin", "-v", "error", "-y"] + cmd + ["-progress", "pipe:1", "-nostats", str(part)]
         log.info("export %s: %s", "copy" if lossless else "encode", subprocess.list2cmdline(cmd))
         return cmd
@@ -1108,10 +1169,9 @@ class Editor(NoteEdits):
         return ["-f", "concat", "-safe", "0", "-i", str(work / "list.txt"),
                 "-map", "0:v:0?", "-map", "0:a?", "-c", "copy"]
 
-    def _encode_command(self, codec, work, frags, notes):
+    def _encode_command(self, codec, work, frags, notes, rot, frame):
         probes = [self._probe(f["path"]) for f in frags]
         ref = max(probes, key=lambda p: p["w"] * p["h"])     # the largest picture sets the frame
-        rot, frame = self._rotate, self._frame
         w, h = frame_size(ref["w"], ref["h"], rot, frame)
         layout = next((p["layout"] for p in probes if p["audio"]), "")
         args, chains, pads, layers = [], [], "", []
@@ -1156,21 +1216,32 @@ class Editor(NoteEdits):
             args += ["-map", "[a]", "-c:a", "aac", "-b:a", "192k"]
         return args
 
-    def _run(self, job, part, final, total):
-        """The export thread. It always reports back: a thread that died silently would leave
-        the editor «saving» for good (measured before: a busy target did exactly that)."""
-        ok, why = False, ""
+    def _run(self, job, pieces):
+        """The export thread: the files one after another, [(fragments, file, length)], up to the
+        first that fails. It always reports back: a thread that died silently would leave the
+        editor «saving» for good (measured before: a busy target did exactly that)."""
+        ok, why, saved, done = False, "", [], 0.0
+        grand = sum(p[2] for p in pieces)
         work = Path(tempfile.mkdtemp(prefix="oyedit_"))
         try:
-            ok, why = self._export(self._command(job, part, work), part, final, work, total)
+            for k, (frags, final, length) in enumerate(pieces):
+                part = final.with_name(final.stem + ".part" + final.suffix)
+                ok, why = self._export(self._command(job, frags, part, work), part, final, work, done, grand)
+                if not ok:
+                    if why and len(pieces) > 1:
+                        why = tr("err_piece", k + 1, why)
+                    break
+                saved.append(final)
+                done += length
         except Exception as e:      # noqa: BLE001 - the boundary: report anything, block nothing
             log.exception("export crashed")
-            why = tr("err_save_failed", type(e).__name__)
+            ok, why = False, tr("err_save_failed", type(e).__name__)
         finally:
             shutil.rmtree(work, ignore_errors=True)
-            self._done.emit(ok, str(final) if ok else ("" if self._cancelled else why))
+            self._done.emit(ok, str(saved[-1]) if ok else ("" if self._cancelled else why), len(saved))
 
-    def _export(self, cmd, part, final, work, total):
+    def _export(self, cmd, part, final, work, done, grand):
+        """One file; done: seconds of the whole save written before it, grand: of all of it."""
         if self._cancelled:            # cancelled while the command was being made
             return False, ""
         err = work / "ffmpeg.err"
@@ -1179,8 +1250,8 @@ class Editor(NoteEdits):
                                           encoding="utf-8", errors="replace", creationflags=_NO_WINDOW)
             for line in self._proc.stdout:
                 key, _, val = line.strip().partition("=")
-                if key == "out_time_us" and val.lstrip("-").isdigit() and total > 0:
-                    self._progressed.emit(min(1.0, max(0.0, int(val) / 1e6 / total)))
+                if key == "out_time_us" and val.lstrip("-").isdigit() and grand > 0:
+                    self._progressed.emit(min(1.0, max(0.0, (done + int(val) / 1e6) / grand)))
             self._proc.wait()
         ok = self._proc.returncode == 0 and not self._cancelled
         msg = err.read_text(encoding="utf-8", errors="replace").strip().splitlines()
@@ -1209,15 +1280,15 @@ class Editor(NoteEdits):
         self._progress = v
         self.changed.emit()
 
-    @Slot(bool, str)
-    def _finished(self, ok, text):
+    @Slot(bool, str, int)
+    def _finished(self, ok, text, files):
         self._thread.join()
         self._thread = self._proc = None
         if ok:
             self._saved = text
             self._saved_state = self._job_state
-            log.info("export saved %s", text)
-            self.p.osdMessage.emit(tr("osd_saved", Path(text).name))
+            log.info("export saved %s (%d files)", text, files)
+            self.p.osdMessage.emit(tr("osd_saved_pieces", files) if files > 1 else tr("osd_saved", Path(text).name))
         elif self._cancelled:
             log.info("export cancelled, partial file removed")
             self.p.osdMessage.emit(tr("osd_save_cancelled"))
@@ -1230,7 +1301,7 @@ class Editor(NoteEdits):
     @Slot()
     def cancelExport(self):
         if self._queued:
-            self._queued = ""
+            self._queued = []
             self.p.osdMessage.emit(tr("osd_save_cancelled"))
             self.changed.emit()
         if self._thread is not None:

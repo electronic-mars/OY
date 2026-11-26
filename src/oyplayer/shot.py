@@ -63,8 +63,24 @@ class ShotEditor(NoteEdits):
         if img.isNull():
             self.p.osdMessage.emit(tr("osd_shot_none"))
             return
+        self._show(img, self.p.shot_name())
+
+    @Slot(str)
+    def openFile(self, path):
+        """A screenshot just saved, to draw on (its toast's key): the file, not the frame shown
+        now, which the playing video has left behind."""
+        if self._active and self._notes:
+            self.opened.emit()
+            return
+        img = QImage(path)
+        if img.isNull():
+            self.p.osdMessage.emit(tr("osd_shot_none"))
+            return
+        self._show(img, Path(path).stem)
+
+    def _show(self, img, name):
         self._img = self.provider.image = img
-        self._src, self._name = f"image://shot/{next(_grabs)}", self.p.shot_name()
+        self._src, self._name = f"image://shot/{next(_grabs)}", name
         self._notes, self._noteSel, self._undo, self._redo, self._merge = [], -1, [], [], None
         self._active = True
         log.info("shot editor: %s", self._name)

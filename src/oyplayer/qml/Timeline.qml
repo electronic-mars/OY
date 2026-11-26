@@ -28,7 +28,8 @@ Item {
     readonly property color clipGround: Theme.light ? "#CFC8B8" : "#191B1F"
     property var fragInfo: []       // editor: the edit's fragments (name, range, shift, pending), by row
     property bool fragFocus: false  // editor: the keyboard works on the fragments
-    signal fragPicked(int row)      // a click on a fragment's block
+    signal fragPicked(int row, real at)     // a click on a fragment's block, at that second
+    signal borderMoved(int row, string side, real t)    // a fragment's end dragged ("a" start, "b" end)
     // editor: the column of track names; everything else is drawn right of it
     readonly property int gutter: editing ? (Theme.tier ? 112 : 84) + 12 : 0
     readonly property int pitch: Theme.tier === 2 ? 26 : 22     // editor: a drawings' track, bar and air
@@ -149,8 +150,40 @@ Item {
     // the playhead stays in sight: past an edge the view turns a page, unless something is held
     property real followAfter: 0        // a fit just made: the seeks of its clicks still arriving
     onPositionChanged: {
-        if (!zoomed || headArea.pressed || rail.dragging || drag !== null || overview.held || Date.now() < followAfter) return
+        if (!zoomed || headArea.pressed || rail.dragging || drag !== null || edgeDrag !== null || overview.held || Date.now() < followAfter) return
         if (position < vA || position > vA + vLen) setView(position - vLen * 0.1, vLen)
+    }
+    // dragging the playhead over a view of two minutes or less: the exact frame at once, not the
+    // keyframe near it, or a few seconds across the picture lags the pointer (the owner, 25.11)
+    readonly property bool fine: editing && vLen <= 120
+    // A fragment's end being dragged on the clip track: {k (its band), row, side, t, lo, hi, moved};
+    // the block follows it, the edit changes on release (the drawings' bars do the same)
+    property var edgeDrag: null
+    function bandFrom(k) { var d = edgeDrag; return d && d.k === k && d.side === "a" ? d.t : bands[k][0] }
+    function bandEnd(k) { var d = edgeDrag; return d && d.k === k && d.side === "b" ? d.t : bands[k][1] }
+    function startEdge(k, side) {
+        var b = bands[k], lo = 0, hi = duration
+        // out to the next piece of this file at most, and never shorter than 0.2 s
+        for (var j = 0; j < bands.length; j++) {
+            if (j === k) continue
+            if (side === "a" && bands[j][1] <= b[0] + 1e-3) lo = Math.max(lo, bands[j][1])
+            if (side === "b" && bands[j][0] >= b[1] - 1e-3) hi = Math.min(hi, bands[j][0])
+        }
+        if (side === "a") hi = b[1] - 0.2
+        else lo = b[0] + 0.2
+        edgeDrag = { k: k, row: b[3] - 1, side: side, t: side === "a" ? b[0] : b[1], lo: lo, hi: hi, moved: false }
+    }
+    function edgeTo(x) {
+        var d = edgeDrag, t = Math.max(d.lo, Math.min(d.hi, timeAt(x)))
+        edgeDrag = Object.assign({}, d, { t: t, moved: true })
+        seekTo(t, fine)
+    }
+    function endEdge() {
+        var d = edgeDrag
+        edgeDrag = null
+        if (!d.moved) { fragPicked(d.row, d.t); return }
+        borderMoved(d.row, d.side, d.t)
+        seekTo(d.t, true)
     }
     // a drawing's times are shown in tenths, as the editor's marks: 0:13.0
     function tenths(s) {
@@ -464,13 +497,13 @@ Item {
         value: tl.duration > 0 ? (tl.position - tl.vA) / tl.vLen : 0
         name: L.t.position
         valueText: tl.fmt(tl.position) + " / " + tl.fmt(tl.duration)
-        onMoved: (v) => tl.seekTo(tl.vA + v * tl.vLen, false)
+        onMoved: (v) => tl.seekTo(tl.vA + v * tl.vLen, tl.fine)
         property bool fitted: false     // the release after a double click's fit: no click
         onReleased: (v) => {
             if (fitted) { fitted = false; return }
-            // editing: a click (not a drag) on a fragment's block chooses it, which shows its start
+            // editing: a click (not a drag) on a fragment's block chooses it, and the frame clicked shows
             var t = tl.vA + v * tl.vLen, b = tl.bands.find(q => t >= q[0] && t <= q[1])
-            if (tl.editing && b && Math.abs(v - rail.pressValue) * rail.width < 4) tl.fragPicked(b[3] - 1)
+            if (tl.editing && b && Math.abs(v - rail.pressValue) * rail.width < 4) tl.fragPicked(b[3] - 1, t)
             else tl.seekTo(t, true)
         }
         // editing: a double click on a fragment's block fits it to the width; a short one in a long
@@ -517,8 +550,8 @@ Item {
         preventStealing: true
         cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
         function at(mx) { return Math.max(0, Math.min(1, mapToItem(rail, mx, 0).x / rail.width)) }
-        onPressed: (m) => { v = at(m.x); tl.seekTo(tl.vA + v * tl.vLen, false) }
-        onPositionChanged: (m) => { if (pressed) { v = at(m.x); tl.seekTo(tl.vA + v * tl.vLen, false) } }
+        onPressed: (m) => { v = at(m.x); tl.seekTo(tl.vA + v * tl.vLen, tl.fine) }
+        onPositionChanged: (m) => { if (pressed) { v = at(m.x); tl.seekTo(tl.vA + v * tl.vLen, tl.fine) } }
         onReleased: (m) => { v = at(m.x); tl.seekTo(tl.vA + v * tl.vLen, true) }
     }
     // ... and on down through the drawings' tracks, under their bars and their words
@@ -598,8 +631,8 @@ Item {
             Accessible.name: L.t.es_frag_n.arg(row + 1).arg(info.name || "").arg(info.range || "")
             Accessible.selected: sel
             Accessible.selectable: true
-            x: tl.px(modelData[0])
-            width: Math.max(2, (modelData[1] - modelData[0]) / tl.vLen * rail.width)
+            x: tl.px(tl.bandFrom(index))
+            width: Math.max(2, (tl.bandEnd(index) - tl.bandFrom(index)) / tl.vLen * rail.width)
             y: rail.y; height: rail.height
             radius: 6
             color: Theme.accA(sel ? .28 : .16)
@@ -607,7 +640,7 @@ Item {
             border.color: Theme.acc
             Item {
                 objectName: "bandLead" + index
-                visible: modelData[2] > modelData[0] + 0.05
+                visible: modelData[2] > modelData[0] + 0.05 && !(tl.edgeDrag && tl.edgeDrag.k === index)
                 x: 2; y: 2
                 width: visible ? (modelData[2] - modelData[0]) / tl.vLen * rail.width : 0
                 height: parent.height - 4; clip: true
@@ -653,8 +686,8 @@ Item {
             readonly property bool sel: row === tl.fragSel
             readonly property color fill: Qt.tint(tl.clipGround, Theme.accA(sel ? .28 : .16))
             z: 1
-            x: tl.px(modelData[0])
-            width: Math.max(2, (modelData[1] - modelData[0]) / tl.vLen * rail.width)
+            x: tl.px(tl.bandFrom(index))
+            width: Math.max(2, (tl.bandEnd(index) - tl.bandFrom(index)) / tl.vLen * rail.width)
             y: rail.y; height: rail.height
             Rectangle {
                 visible: wordRow.visible
@@ -673,7 +706,7 @@ Item {
                 }
                 Text {
                     visible: words.width > 200
-                    text: tl.fmt(modelData[0]) + "–" + tl.fmt(modelData[1])
+                    text: tl.fmt(tl.bandFrom(index)) + "–" + tl.fmt(tl.bandEnd(index))
                     color: Theme.glyph; font.family: Theme.monoFont; font.pixelSize: 11
                 }
             }
@@ -705,6 +738,36 @@ Item {
                 Accessible.role: Accessible.Button
                 Accessible.name: L.t.es_remove_n.arg(words.row + 1)
                 Accessible.onPressAction: editor.removeSelected()
+            }
+        }
+    }
+    // each fragment's ends are handles (the owner, 25.11: the grips were drawn and did nothing):
+    // dragged, the end goes out or in, as I and O do it. Counted, not taken from editor.bands, so
+    // a keyframe read or a save's progress never rebuilds a handle under the pointer.
+    Repeater {
+        model: tl.editing && tl.duration > 0 ? tl.bands.length : 0
+        Item {
+            id: edges
+            readonly property int k: index
+            readonly property real x0: tl.bands[k] ? tl.px(tl.bandFrom(k)) : 0
+            readonly property real x1: tl.bands[k] ? tl.px(tl.bandEnd(k)) : 0
+            // a block too narrow for both handles has none, unless one of them is being dragged
+            visible: x1 - x0 >= 14 || (tl.edgeDrag !== null && tl.edgeDrag.k === k)
+            z: 1.5
+            Repeater {
+                model: ["a", "b"]
+                MouseArea {
+                    objectName: "fragEdge" + modelData + edges.k
+                    x: (modelData === "a" ? edges.x0 : edges.x1) - width / 2
+                    y: rail.y; width: 10; height: rail.height
+                    hoverEnabled: true
+                    preventStealing: true
+                    cursorShape: Qt.SizeHorCursor
+                    onPressed: tl.startEdge(edges.k, modelData)
+                    onPositionChanged: (m) => { if (pressed && tl.edgeDrag) tl.edgeTo(mapToItem(area, m.x, 0).x) }
+                    onReleased: if (tl.edgeDrag) tl.endEdge()
+                    Tip { text: L.t.es_edge_tip; shown: parent.containsMouse && !parent.pressed }
+                }
             }
         }
     }

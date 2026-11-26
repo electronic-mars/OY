@@ -302,11 +302,17 @@ Item {
                  anchors.verticalCenter: parent.verticalCenter
                  onClicked: editor.exporting ? editor.cancelExport() : actions.run("edit_save")
                  onRightClicked: actions.run("edit_save_as") }
+        // two pieces or more: each into a file of its own, at one go (the owner, 25.11: five pieces
+        // of one long video marked in one viewing)
+        KeyCap { objectName: "editSavePieces"; visible: strip.frags.length > 1 && !editor.exporting
+                 glyph: "copy"; tip: L.t.es_save_pieces_tip.arg(strip.frags.length)
+                 anchors.verticalCenter: parent.verticalCenter
+                 onClicked: actions.run("edit_save_pieces") }
         // saved, and not changed since: the next piece of the same video starts from here
         // (the owner, 20.11: five pieces cut from one long video in one viewing)
         KeyCap { objectName: "editNextPiece"; visible: editor.finished && !editor.exporting
                  glyph: "plus"; caption: strip.width >= 1500 ? L.t.es_next_piece : ""   // the words only where they leave the time its room
-                 tip: L.t.es_next_piece_tip
+                 tip: L.t.es_next_piece_tip + " (N)"
                  anchors.verticalCenter: parent.verticalCenter
                  onClicked: editor.nextPiece() }
         KeyCap { visible: editor.saved !== "" && !editor.exporting; glyph: Theme.icFolder

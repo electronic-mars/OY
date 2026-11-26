@@ -25,6 +25,7 @@ from PySide6.QtGui import QColor, QGuiApplication, QImage, QKeyEvent, QMouseEven
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QSystemTrayIcon
 
+from .editor import probe
 from .i18n import EN, LANGUAGES, UK, forms, lang, plural_table, words
 from .log import log
 
@@ -36,7 +37,7 @@ VK = {"Space": 0x20, "M": 0x4D, "S": 0x53, "Right": 0x27, "Enter": 0x0D, "Esc": 
       "NP+": 0x6B, "2": 0x32, "1": 0x31, "=": 0xBB, "Q": 0x51, "`": 0xC0, "/": 0xBF, "I": 0x49, "K": 0x4B, "F12": 0x7B,
       "E": 0x45, "O": 0x4F, "X": 0x58, "\\": 0xDC, "Down": 0x28,
       "H": 0x48, "Z": 0x5A, "Y": 0x59, "F2": 0x71, "F10": 0x79, "End": 0x23, "MediaPlay": 0xB3, "Tab": 0x09,
-      "[": 0xDB, "]": 0xDD, "F6": 0x75, "Home": 0x24, "Left": 0x25, "V": 0x56}
+      "[": 0xDB, "]": 0xDD, "F6": 0x75, "Home": 0x24, "Left": 0x25, "V": 0x56, "N": 0x4E}
 # a Ukrainian word ("Film"), written as escapes: names and typed text must survive in Cyrillic
 CYRILLIC = "\u0424\u0456\u043b\u044c\u043c"
 SCRATCH = r"Software\OYPlayerSelftest"     # the file types test writes here, and deletes it
@@ -490,6 +491,7 @@ class SelfTest(QObject):
             "rv1": self.rv1_steps,     # code review 1 (05.11): the curtain, network folders, an edit's border, one player, the session's end
             "report": self.rp_steps,     # the site and the thanks in About; a crash's trace and the card after it
             "fb5": self.fb5_steps,     # feedback 20.11: the needle's head, the editor in full screen, the file types' names
+            "fb6": self.fb6_steps,     # review 25.11: a click in a fragment, its ends dragged, pieces to files, exact scrub, a shot to draw on
         }
         # tests\next-run-focus (used up like next-run-exe): the quick part and only the blocks it
         # names; empty, the quick part alone. Without it, everything.
@@ -1194,11 +1196,16 @@ class SelfTest(QObject):
         self.p.osdMessage.disconnect(self.osd_seen.append)
 
     def s_ed_prev(self):
-        self.click_frag(2)          # shows the fragment's first frame
+        # a quarter into the fragment's block: that frame shows (the owner, 25.11: not its start)
+        f = self.ed.fragments[2]
+        self.prev_at = f["from"] + 0.25 * (f["end"] - f["from"])
+        block = self.find_item("frag2")
+        self.click_item(block, (block.width() * 0.25, block.height() / 2))
 
     def s_ed_prev_key(self):
-        self.check("click on a fragment shows its start", self.ed.selected == 2 and abs(self.st("position") - 2.0) < 0.2
-                   and self.st("paused") is True, f"pos={self.st('position'):.2f}")
+        self.check("a click inside a fragment chooses it and shows the frame clicked, paused",
+                   self.ed.selected == 2 and abs(self.st("position") - self.prev_at) < 0.1
+                   and self.st("paused") is True, f"pos={self.st('position'):.2f} want {self.prev_at:.2f}")
         # Space after a click on a fragment plays the edit from that fragment (Shift+Space
         # always starts at the first one)
         self.key("Space")
@@ -5574,3 +5581,146 @@ class SelfTest(QObject):
         self.check(f"every word in About shows whole, inside the page ({code})", not bad, "; ".join(bad))
         if code != "en":
             self.shot(f"report_04_about_{code}")
+
+    # ---- review 25.11 (Fable): a click in a fragment shows that frame; a fragment's ends are
+    # dragged; each piece to a file of its own, named by its times; «Next piece» from N, keeping a
+    # logo; zoomed in, the playhead drags to the exact frame; a screenshot opened to draw on
+    def fb6_steps(self):
+        long_mkv = str(Path(self.media).parent / "test_long.mkv")
+        return [
+            (0, lambda: self.pl.add([long_mkv], True)), (1500, lambda: setattr(self.p.mpv, "pause", True)),
+            (0, lambda: None if self.ed.active else self.key("E", Qt.ControlModifier)),
+            (600, lambda: self.ed.clear()), (0, lambda: self.settings.set("exportCodec", "copy")), (400, lambda: None),
+            # zoomed to 30-40 s, the needle's head dragged to 33.3 s: that frame while still held
+            (0, lambda: self.p.seek(31.0)), (500, lambda: None),
+            (0, lambda: QMetaObject.invokeMethod(self.find_item("timeline"), "setView", Q_ARG("QVariant", 30.0), Q_ARG("QVariant", 10.0))), (400, self.s_fb6_scrub), (700, self.s_fb6_scrubbed),
+            (0, lambda: self.click_item(self.find_item("zoomFit"))),
+            # a piece 10-30 s (not fb5's saved 10-20); N on an edit not saved does nothing
+            (300, lambda: self.p.seek(10.0)), (600, lambda: self.key("I")), (0, lambda: self.p.seek(30.0)),
+            (600, lambda: self.key("O")), (300, self.until(lambda: not self.ed.pending, 10, 50)),
+            (0, lambda: self.key("N")), (300, self.s_fb6_n_unsaved),
+            # its end dragged out to 35 s; one undo step
+            (0, lambda: self.s_fb6_edge("b", 35.0)), (500, self.s_fb6_edged), (0, lambda: self.ed.undo()),
+            (300, self.s_fb6_edge_undone), (0, lambda: self.s_fb6_edge("b", 35.0)), (500, lambda: None),
+            # split at 20 (a keyframe), a logo over it, each piece to its own file
+            (0, lambda: self.p.seek(20.0)), (600, lambda: self.key("X")), (300, self.until(lambda: not self.ed.pending, 10, 50)),
+            (0, self.s_fb6_logo), (300, self.s_fb6_pieces_key), (0, lambda: self.a.run("edit_save_pieces")),
+            (500, self.until(lambda: not self.ed.exporting, 60, 100)), (300, self.s_fb6_pieces),
+            # N now: the whole video again, the logo kept
+            (0, lambda: self.key("N")), (400, self.s_fb6_next), (0, self.s_fb6_clean),
+            # a screenshot to draw on, from its own command, whatever the screenshot key does
+            (0, lambda: self.settings.set("shotMode", "file")), (0, lambda: self.ed.close()), (300, lambda: self.p.seek(12.0)),
+            (600, lambda: self.a.run("screenshot_draw")), (900, self.s_fb6_shot_cmd),
+            (0, lambda: self.shot_window().close()), (300, self.s_shf_prep),
+            (0, lambda: self.a.run("screenshot")), (800, self.s_fb6_toast),
+            (0, lambda: self.click_item(self.find_item("shotToastDraw"))), (900, self.s_fb6_toast_drawn),
+            (0, lambda: self.shot_window().close()), (300, self.s_fb6_shot_clean),
+        ]
+
+    def s_fb6_scrub(self):
+        head, rail, tl = self.find_item("needleHead"), self.find_item("seekRail"), self.find_item("timeline")
+        start = head.mapToScene(QPointF(head.width() / 2, head.height() / 2))
+        x = rail.mapToScene(QPointF((33.3 - tl.property("vA")) / tl.property("vLen") * rail.width(), 0)).x()
+        QTest.mousePress(self.win, Qt.LeftButton, Qt.NoModifier, QPoint(int(start.x()), int(start.y())))
+        QTest.mouseMove(self.win, QPoint(int(start.x() + (x - start.x()) / 2), int(start.y())))
+        QTest.mouseMove(self.win, QPoint(int(x), int(start.y())))
+
+    def s_fb6_scrubbed(self):
+        tl, head = self.find_item("timeline"), self.find_item("needleHead")
+        pos = self.st("position")
+        self.check("zoomed in to 10 s, the needle dragged shows the exact frame while still held, not the keyframe "
+                   "(every 10 s in this clip)", tl.property("fine") is True and abs(pos - 33.3) < 0.15,
+                   f"fine={tl.property('fine')} position={pos:.2f} want 33.3")
+        c = head.mapToScene(QPointF(head.width() / 2, head.height() / 2))
+        QTest.mouseRelease(self.win, Qt.LeftButton, Qt.NoModifier, QPoint(int(c.x()), int(c.y())))
+
+    def s_fb6_n_unsaved(self):
+        self.check("N on an edit not saved leaves it as it is", self.frags() == [("test_long.mkv", 10.0, 30.0)],
+                   f"frags={self.frags()}")
+
+    def s_fb6_edge(self, side, to):
+        edge, rail, tl = self.find_item(f"fragEdge{side}0"), self.find_item("seekRail"), self.find_item("timeline")
+        self.fb6_undo = len(self.ed._undo)
+        a = edge.mapToScene(QPointF(edge.width() / 2, edge.height() / 2))
+        x = rail.mapToScene(QPointF((to - tl.property("vA")) / tl.property("vLen") * rail.width(), 0)).x()
+        self.fb6_cursor = edge.property("cursorShape")
+        QTest.mousePress(self.win, Qt.LeftButton, Qt.NoModifier, QPoint(int(a.x()), int(a.y())))
+        for k in range(1, 6):
+            QTest.mouseMove(self.win, QPoint(int(a.x() + (x - a.x()) * k / 5), int(a.y())))
+        QTest.mouseRelease(self.win, Qt.LeftButton, Qt.NoModifier, QPoint(int(x), int(a.y())))
+
+    def s_fb6_edged(self):
+        f = self.frags()
+        self.check("a fragment's end dragged on the clip track takes it out to there, with a sideways cursor, "
+                   "as one undo step", len(f) == 1 and f[0][1] == 10.0 and abs(f[0][2] - 35.0) < 0.3
+                   and self.fb6_cursor == Qt.SizeHorCursor and len(self.ed._undo) == self.fb6_undo + 1,
+                   f"frags={f} cursor={self.fb6_cursor} undo {self.fb6_undo}->{len(self.ed._undo)}")
+        self.shot("fb6_01_edge")
+
+    def s_fb6_edge_undone(self):
+        self.check("Ctrl+Z puts the dragged end back", self.frags() == [("test_long.mkv", 10.0, 30.0)], f"frags={self.frags()}")
+
+    def s_fb6_logo(self):
+        png = self.out / "fb6_logo.png"
+        img = QImage(64, 32, QImage.Format_ARGB32)
+        img.fill(QColor("#E5484D"))
+        img.save(str(png))
+        self.ed.addImage(str(png))
+
+    def s_fb6_pieces_key(self):
+        key = self.find_item("editSavePieces")
+        self.check("two pieces: the key that saves each to a file of its own shows, its tip says how many",
+                   key is not None and key.isVisible() and "2" in key.property("tip"),
+                   f"visible={key is not None and key.isVisible()} tip={key.property('tip') if key else None}")
+
+    def s_fb6_pieces(self):
+        names = sorted(p.name for p in Path(self.media).parent.glob("test_long (*"))
+        self.fb6_files = [Path(self.media).parent / n for n in names]
+        durs = [round(probe(str(p))["duration"]) for p in self.fb6_files]
+        self.check("each piece to a file of its own beside the source, named by its times, the edit saved",
+                   names == ["test_long (edit 0m10s-0m20s).mp4", "test_long (edit 0m20s-0m34s).mp4"]     # dragged to 34.9 s
+                   and durs == [10, 15] and self.ed.finished and self.ed.error == "",
+                   f"files={names} lengths={durs} finished={self.ed.finished} error={self.ed.error}")
+        self.shot("fb6_02_pieces")
+
+    def s_fb6_next(self):
+        kinds = [n["kind"] for n in self.ed.notes]
+        self.check("N after the save: the whole video again, the logo kept over it",
+                   self.frags() == [("test_long.mkv", 0.0, round(self.st("duration"), 1))] and kinds == ["image"],
+                   f"frags={self.frags()} drawings={kinds}")
+
+    def s_fb6_clean(self):
+        for p in getattr(self, "fb6_files", []):
+            p.unlink(missing_ok=True)
+        self.ed.selectNote(0)
+        self.ed.removeSelected()
+        self.ed.clear()
+
+    def s_fb6_shot_cmd(self):
+        shot = self.m8["shot"]
+        self.check("Shift+F12's command opens the frame to draw on while the screenshot key saves to the folder",
+                   shot.active and self.shot_window().isVisible() and self.settings["shotMode"] == "file",
+                   f"active={shot.active} visible={self.shot_window().isVisible()}")
+
+    def s_fb6_toast(self):
+        new = self.shots_now() - self.shots_before
+        self.fb6_shot = next(iter(new), None)
+        toast, draw, name = self.find_item("shotToast"), self.find_item("shotToastDraw"), self.find_item("shotToastName")
+        r = draw.mapRectToScene(draw.boundingRect()).toRect()
+        self.check("the saved screenshot's toast offers to draw on it, whole in the window",
+                   self.fb6_shot is not None and toast.property("opacity") > 0.9 and draw.isVisible()
+                   and draw.property("text") == EN["shot_draw"] and not name.property("truncated")
+                   and QRect(0, 0, self.win.width(), self.win.height()).contains(r),
+                   f"new={new} draw={draw.isVisible()} rect={r.getRect()}")
+        self.shot("fb6_03_toast")
+
+    def s_fb6_toast_drawn(self):
+        shot = self.m8["shot"]
+        self.check("«Draw» opens the saved file in the screenshot editor, under its name",
+                   shot.active and self.fb6_shot is not None and shot.name == self.fb6_shot.stem
+                   and QImage(shot._img).size() == QImage(str(self.fb6_shot)).size(),
+                   f"active={shot.active} name={shot.name} file={self.fb6_shot}")
+
+    def s_fb6_shot_clean(self):
+        if getattr(self, "fb6_shot", None):
+            self.fb6_shot.unlink(missing_ok=True)

@@ -8,8 +8,13 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 ### Added
 - Several pieces from one long video in one sitting: after a save the edit panel says it is saved and offers «Next piece», which starts again from the whole video, the picture where it stands (Ctrl+Z brings the saved edit back). Closing the editor after a save ends that edit, so the next Ctrl+E starts afresh; an edit not saved stays for Ctrl+E as before.
 - Editing, the timeline zooms: Alt+wheel round the pointer, the + and − keys at the right of the scale, a double click on a fragment fits it to the width. Zoomed in, the scale is finer, the view follows the playhead, and the whole file shows in small at the left, where a click or a drag moves the view; the whole-file key takes the zoom back.
+- Editing, each piece to a file of its own: with two pieces or more, a key beside Save writes every piece as its own file beside the source, named by its times («clip (edit 1m05s-1m20s).mp4»). A single piece saved is named by its times too.
+- Editing, the N key starts the next piece once the edit is saved (it does nothing to an edit not saved); a logo put over the video stays for the next piece.
+- Editing, a fragment's ends on the clip track can be dragged with a sideways cursor: the piece grows or shrinks, as one undo step.
+- «Screenshot to draw on» (Shift+F12, and in the picture menu) opens the frame in the screenshot editor whatever the screenshot key is set to do, and the toast of a saved screenshot has «Draw», which opens that file to draw on.
 
 ### Changed
+- Editing, a click inside a fragment shows the frame clicked, not the fragment's first one; zoomed in to two minutes or less, dragging the playhead shows the exact frame, not the nearest keyframe.
 - Editing, the playhead's yellow head on the time scale can be taken and dragged, with an open hand over it and a closed one while it is held.
 - Editing in full screen, the panel no longer steps aside and the pointer no longer hides: the picture stands above the panel, as in a window.
 - Windows names the player's file types «Video (OY Player)», without a dash, in every language.

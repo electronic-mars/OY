@@ -56,7 +56,7 @@ DEFAULT_KEYS = {
     "Alt+1": "scale_50", "Alt+2": "scale_100", "Alt+3": "scale_150", "Alt+4": "scale_200",
     "Home": "scale_100",
     "Q": "tech_osd", "Shift+V": "video_panel",
-    "Ctrl+F12": "screenshot_clipboard", "Ctrl+S": "screenshot_folder",
+    "Ctrl+F12": "screenshot_clipboard", "Ctrl+S": "screenshot_folder", "Shift+F12": "screenshot_draw",
     # subtitles
     "Shift+S": "load_subtitles", "Shift+/": "cycle_subtitles", "Alt+S": "subtitle_menu",
     "Alt+Right": "sub_later", "Alt+Left": "sub_earlier",
@@ -70,7 +70,7 @@ DEFAULT_KEYS = {
     "\\": "ab_loop",
     # the editor (new in OY Player; LosslessCut's I and O)
     "Ctrl+E": "edit_mode", "I": "mark_in", "O": "mark_out", "X": "cut_out",
-    "Shift+Space": "edit_preview", "Ctrl+Shift+S": "edit_save",
+    "Shift+Space": "edit_preview", "Ctrl+Shift+S": "edit_save", "N": "edit_next_piece",
     # the editor's drawings: through those on the frame; [ and ] are a drawing's I and O
     "Tab": "note_next", "Shift+Tab": "note_prev", "[": "note_in", "]": "note_out",
     # the keyboard's area: the playlist, the edit strip, the commands (Windows' pane key; Tab
@@ -92,7 +92,7 @@ BINDABLE = (
     "volume_down", "mute", "fullscreen", "minimize", "on_top", "close", "settings", "next", "prev",
     "playlist", "add_files", "add_folder", "remove_selected", "playlist_remove", "clear_playlist",
     "move_up", "move_down", "sort", "repeat", "repeat_file", "shuffle", "play_selected",
-    "screenshot", "screenshot_clipboard", "screenshot_folder", "video_panel", "tech_osd",
+    "screenshot", "screenshot_draw", "screenshot_clipboard", "screenshot_folder", "video_panel", "tech_osd",
     "file_info", "aspect_default", "aspect_16_9", "aspect_4_3", "aspect_235", "aspect_fill",
     "aspect_cycle", "zoom_in", "zoom_out", "reset_geometry", "pan_left", "pan_right", "pan_up",
     "pan_down", "brightness_up", "brightness_down", "contrast_up", "contrast_down", "saturation_up",
@@ -100,8 +100,8 @@ BINDABLE = (
     "subtitles", "cycle_subtitles", "load_subtitles", "subtitle_menu", "sub_later", "sub_earlier",
     "sub_slower", "sub_faster", "cycle_audio", "load_audio", "audio_menu", "audio_earlier",
     "audio_later", "pitch_up", "pitch_down", "pitch_reset", "resume", "ab_loop", "edit_mode",
-    "mark_in", "mark_out", "cut_out", "edit_whole", "edit_preview", "edit_save", "edit_save_as", "edit_rotate",
-    "area_next", "area_prev", "note_next", "note_prev", "note_in", "note_out", "edit_undo",
+    "mark_in", "mark_out", "cut_out", "edit_whole", "edit_preview", "edit_save", "edit_save_as", "edit_save_pieces",
+    "edit_next_piece", "edit_rotate", "area_next", "area_prev", "note_next", "note_prev", "note_in", "note_out", "edit_undo",
     "edit_redo", "skip_open_start", "skip_open_end", "skip_credits", "autoskip", "history", "radio",
     "radio_record", "scheduler",
 )
@@ -171,6 +171,7 @@ class Actions(QObject):
     minimizeRequested = Signal()
     closeRequested = Signal()
     screenshotRequested = Signal()
+    shotDrawRequested = Signal()    # the frame into the screenshot editor, whatever the setting
     performed = Signal(str)    # for the self-test and the log
     menuKey = Signal(str)      # up | down | home | end | enter, for the open menu
     areaKey = Signal(str)      # up | down | left | right | home | end | enter | delete, for the area
@@ -212,6 +213,7 @@ class Actions(QObject):
             "subtitles": player.toggleSubs,
             "fullscreen": self.toggleFullscreenRequested.emit,
             "screenshot": self.screenshotRequested.emit,
+            "screenshot_draw": self.shotDrawRequested.emit,
             "on_top": self.onTopToggled.emit,
             "minimize": self.minimizeRequested.emit,
             "close": self._close,
@@ -287,6 +289,9 @@ class Actions(QObject):
             "edit_rotate": editor.rotateFrame,
             "edit_save": editor.saveHere,
             "edit_save_as": editor.requestSave,
+            "edit_save_pieces": editor.savePieces,
+            # only once the edit is saved: a bare key must never wipe an unsaved one
+            "edit_next_piece": lambda: editor.nextPiece() if editor.active and editor.finished else None,
             "area_next": lambda: self.areaRequested.emit(1),
             "area_prev": lambda: self.areaRequested.emit(-1),
             "note_next": lambda: editor.cycleNote(1),
