@@ -5,6 +5,8 @@ Each version is a git tag `vX.Y.Z`; the installer for it is attached to the GitH
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-26
+
 ### Added
 - Several pieces from one long video in one sitting: after a save the edit panel says it is saved and offers «Next piece», which starts again from the whole video, the picture where it stands (Ctrl+Z brings the saved edit back). Closing the editor after a save ends that edit, so the next Ctrl+E starts afresh; an edit not saved stays for Ctrl+E as before.
 - Editing, the timeline zooms: Alt+wheel round the pointer, the + and − keys at the right of the scale, a double click on a fragment fits it to the width. Zoomed in, the scale is finer, the view follows the playhead, and the whole file shows in small at the left, where a click or a drag moves the view; the whole-file key takes the zoom back.
